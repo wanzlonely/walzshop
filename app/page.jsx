@@ -1,0 +1,3164 @@
+'use client';
+import { useState, useEffect, useRef, useMemo } from 'react';
+
+const api = async (endpoint, payload = {}) => {
+  try {
+    const res = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint, ...payload }),
+      credentials: 'include',
+    });
+    return res.json();
+  } catch (e) {
+    return { success: false, msg: 'Koneksi gagal' };
+  }
+};
+const authApi = async (path, payload) => {
+  try {
+    const res = await fetch(`/api/auth/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'include',
+    });
+    return res.json();
+  } catch (e) {
+    return { success: false, msg: 'Koneksi gagal' };
+  }
+};
+
+const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+const OTP_DURATION = 300;
+const COUNTRY_ISO = {
+  indonesia: 'id', malaysia: 'my', 'united states': 'us', usa: 'us',
+  india: 'in', philippines: 'ph', vietnam: 'vn', thailand: 'th',
+  singapore: 'sg', myanmar: 'mm', cambodia: 'kh', laos: 'la',
+  brazil: 'br', mexico: 'mx', russia: 'ru', china: 'cn',
+  'united kingdom': 'gb', uk: 'gb', france: 'fr', germany: 'de',
+  turkey: 'tr', nigeria: 'ng', ghana: 'gh', kenya: 'ke',
+  pakistan: 'pk', bangladesh: 'bd', egypt: 'eg', ukraine: 'ua',
+  poland: 'pl', 'south africa': 'za', colombia: 'co', argentina: 'ar',
+  peru: 'pe', ethiopia: 'et', tanzania: 'tz', netherlands: 'nl',
+  spain: 'es', afghanistan: 'af', albania: 'al', algeria: 'dz',
+  andorra: 'ad', angola: 'ao', armenia: 'am', australia: 'au',
+  austria: 'at', azerbaijan: 'az', bahamas: 'bs', bahrain: 'bh',
+  barbados: 'bb', belarus: 'by', belgium: 'be', belize: 'bz',
+  benin: 'bj', bhutan: 'bt', bolivia: 'bo', 'bosnia and herzegovina': 'ba',
+  botswana: 'bw', brunei: 'bn', bulgaria: 'bg', 'burkina faso': 'bf',
+  burundi: 'bi', 'cabo verde': 'cv', 'cape verde': 'cv', cameroon: 'cm',
+  canada: 'ca', 'central african republic': 'cf', chad: 'td', chile: 'cl',
+  comoros: 'km', congo: 'cg', 'costa rica': 'cr', croatia: 'hr',
+  cuba: 'cu', cyprus: 'cy', czechia: 'cz', 'czech republic': 'cz',
+  denmark: 'dk', djibouti: 'dj', dominica: 'dm', 'dominican republic': 'do',
+  'democratic republic of the congo': 'cd', ecuador: 'ec', 'el salvador': 'sv',
+  'equatorial guinea': 'gq', eritrea: 'er', estonia: 'ee', eswatini: 'sz',
+  fiji: 'fj', finland: 'fi', gabon: 'ga', gambia: 'gm', georgia: 'ge',
+  greece: 'gr', grenada: 'gd', guatemala: 'gt', guinea: 'gn',
+  'guinea-bissau': 'gw', guyana: 'gy', haiti: 'ht', honduras: 'hn',
+  hungary: 'hu', iceland: 'is', iran: 'ir', iraq: 'iq', ireland: 'ie',
+  israel: 'il', italy: 'it', "ivory coast": 'ci', "cote d'ivoire": 'ci',
+  jamaica: 'jm', japan: 'jp', jordan: 'jo', kazakhstan: 'kz', kiribati: 'ki',
+  kuwait: 'kw', kyrgyzstan: 'kg', latvia: 'lv', lebanon: 'lb', lesotho: 'ls',
+  liberia: 'lr', libya: 'ly', liechtenstein: 'li', lithuania: 'lt',
+  luxembourg: 'lu', madagascar: 'mg', malawi: 'mw', maldives: 'mv',
+  mali: 'ml', malta: 'mt', 'marshall islands': 'mh', mauritania: 'mr',
+  mauritius: 'mu', micronesia: 'fm', moldova: 'md', monaco: 'mc',
+  mongolia: 'mn', montenegro: 'me', morocco: 'ma', mozambique: 'mz',
+  namibia: 'na', nauru: 'nr', nepal: 'np', 'new zealand': 'nz',
+  nicaragua: 'ni', niger: 'ne', 'north korea': 'kp', 'north macedonia': 'mk',
+  norway: 'no', oman: 'om', palau: 'pw', palestine: 'ps', panama: 'pa',
+  'papua new guinea': 'pg', paraguay: 'py', portugal: 'pt', qatar: 'qa',
+  romania: 'ro', rwanda: 'rw', 'saint kitts and nevis': 'kn',
+  'saint lucia': 'lc', 'saint vincent and the grenadines': 'vc',
+  samoa: 'ws', 'san marino': 'sm', 'sao tome and principe': 'st',
+  'saudi arabia': 'sa', senegal: 'sn', serbia: 'rs', seychelles: 'sc',
+  'sierra leone': 'sl', slovakia: 'sk', slovenia: 'si',
+  'solomon islands': 'sb', somalia: 'so', 'south korea': 'kr', korea: 'kr',
+  'south sudan': 'ss', 'sri lanka': 'lk', sudan: 'sd', suriname: 'sr',
+  sweden: 'se', switzerland: 'ch', syria: 'sy', taiwan: 'tw',
+  tajikistan: 'tj', 'timor-leste': 'tl', 'east timor': 'tl', togo: 'tg',
+  tonga: 'to', 'trinidad and tobago': 'tt', tunisia: 'tn', turkmenistan: 'tm',
+  tuvalu: 'tv', uganda: 'ug', 'united arab emirates': 'ae', uae: 'ae',
+  uruguay: 'uy', uzbekistan: 'uz', vanuatu: 'vu', 'vatican city': 'va',
+  vatican: 'va', venezuela: 've', yemen: 'ye', zambia: 'zm', zimbabwe: 'zw',
+};
+
+function FlagImg({ name, size = 28, style: customStyle = {} }) {
+  const iso = COUNTRY_ISO[name?.toLowerCase()];
+  const [failed, setFailed] = useState(false);
+  if (!iso || failed) {
+    return <span style={{ fontSize: size * 0.85, lineHeight: 1, display: 'inline-block', ...customStyle }}>🌐</span>;
+  }
+  return (
+    <img
+      src={`https://flagcdn.com/w40/${iso}.png`}
+      alt={name || 'flag'}
+      onError={() => setFailed(true)}
+      style={{
+        width: size,
+        height: Math.round(size * 0.67),
+        objectFit: 'cover',
+        borderRadius: 3,
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+        ...customStyle,
+      }}
+    />
+  );
+}
+
+const formatTime = secs => {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0');
+  const s = (secs % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
+
+const formatReceiptDate = (ts) => {
+  if (!ts) return '-';
+  const n = Number(ts);
+  if (isNaN(n)) return '-';
+  const d = new Date(n);
+  if (isNaN(d.getTime())) return '-';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+  return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}, ${d.getHours().toString().padStart(2, '0')}.${d.getMinutes().toString().padStart(2, '0')} WIB`;
+};
+
+function EyeToggle({ show, onToggle }) {
+  return (
+    <button type="button" className="eye-btn" onClick={onToggle} tabIndex={-1}>
+      {show ? '🐵' : '🙈'}
+    </button>
+  );
+}
+
+function LoadingSpinner({ style }) {
+  return <div className="loading-spinner" style={style} />;
+}
+
+const SvgProduct = () => (
+  <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+    <rect x="5" y="2" width="14" height="20" rx="3" fill="currentColor" fillOpacity="0.15" />
+    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+  </svg>
+);
+const SvgPPOB = () => (
+  <svg viewBox="0 0 24 24" fill="none" width="26" height="26">
+    <rect x="2" y="6" width="20" height="12" rx="4" fill="currentColor" fillOpacity="0.15" />
+    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M6 12h4m-2-2v4m8-2h.01M16 10h.01" />
+  </svg>
+);
+const SvgTopUp = () => (
+  <svg viewBox="0 0 24 24" fill="none" width="26" height="26">
+    <rect x="3" y="6" width="18" height="12" rx="2" fill="currentColor" fillOpacity="0.15" />
+    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 14h3M3 8a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+  </svg>
+);
+const SvgProfile = () => (
+  <svg viewBox="0 0 24 24" fill="none" width="26" height="26">
+    <circle cx="12" cy="8" r="4" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="2" />
+    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" />
+  </svg>
+);
+const SvgSun = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="20" height="20"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+);
+const SvgMoon = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="20" height="20"><path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+);
+const SvgBell = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="20" height="20">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+  </svg>
+);
+
+function OperatorIcon({ name, imageUrl }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const hasImg = imageUrl && name !== 'any';
+  return (
+    <div className="operator-icon-placeholder">
+      {hasImg && !imgFailed ? (
+        <img src={imageUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }} onError={() => setImgFailed(true)} />
+      ) : (
+        <span style={{ fontSize: name === 'any' ? '1.2rem' : '0.95rem', fontWeight: 900, color: 'var(--blue2)', letterSpacing: '-0.5px' }}>
+          {name === 'any' ? '✦' : (name?.[0]?.toUpperCase() || '?')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const IconCheck = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
+);
+const IconCross = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+);
+const IconWarning = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+);
+const IconClock = () => (
+  <svg fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+);
+
+export default function Page() {
+  const [theme, setTheme] = useState('dark');
+  const [step, setStep] = useState('init');
+  const [email, setEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [pwInput, setPwInput] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [setupUser, setSetupUser] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [otpMode, setOtpMode] = useState('register');
+  const timerRef = useRef(null);
+  const ppobRequestIdRef = useRef(0);
+
+  const [user, setUser] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [username, setUsername] = useState('');
+  const [tab, setTab] = useState('virtual');
+
+  const [services, setServices] = useState([]);
+  const [query, setQuery] = useState('');
+  const [countryQuery, setCountryQuery] = useState('');
+
+  const [selectedSvc, setSelectedSvc] = useState(null);
+  const [countries, setCountries] = useState([]);
+  const [loadingCountries, setLoadingCountries] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
+
+  const [expandedCountry, setExpandedCountry] = useState(null);
+  const [orderingProv, setOrderingProv] = useState(null);
+
+  const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const [operators, setOperators] = useState([]);
+  const [selectedOrderContext, setSelectedOrderContext] = useState(null);
+
+  const [order, setOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('walz_active_order');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [orderExpiry, setOrderExpiry] = useState(() => {
+    try {
+      const saved = localStorage.getItem('walz_order_expiry');
+      if (!saved) return 0;
+      const { expiry, savedAt } = JSON.parse(saved);
+      const elapsed = Math.floor((Date.now() - savedAt) / 1000);
+      return Math.max(0, expiry - elapsed);
+    } catch { return 0; }
+  });
+  const [cancelCooldown, setCancelCooldown] = useState(() => {
+    try {
+      const saved = localStorage.getItem('walz_cancel_cooldown');
+      if (!saved) return 0;
+      const { cooldown, savedAt } = JSON.parse(saved);
+      const elapsed = Math.floor((Date.now() - savedAt) / 1000);
+      return Math.max(0, cooldown - elapsed);
+    } catch { return 0; }
+  });
+  const [cancelingOrder, setCancelingOrder] = useState(false);
+
+  const [depositAmount, setDepositAmount] = useState('');
+  const [qrisData, setQrisData] = useState(null);
+  const [creatingQris, setCreatingQris] = useState(false);
+  const [cancelingDeposit, setCancelingDeposit] = useState(false);
+
+  const [curPass, setCurPass] = useState('');
+  const [profileNewPass, setProfileNewPass] = useState('');
+  const [profileConfirmPass, setProfileConfirmPass] = useState('');
+  const [showCurPass, setShowCurPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showProfileConfPass, setShowProfileConfPass] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPass, setSavingPass] = useState(false);
+
+  const [busy, setBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfPw, setShowConfPw] = useState(false);
+
+  const [ppobItems, setPpobItems] = useState([]);
+  const [ppobError, setPpobError] = useState('');
+  const [ppobQuery, setPpobQuery] = useState('');
+  const [ppobLoading, setPpobLoading] = useState(false);
+  const [ppobStep, setPpobStep] = useState('list');
+  const [ppobSelectedProduct, setPpobSelectedProduct] = useState(null);
+  const [ppobCustomerId, setPpobCustomerId] = useState('');
+  const [ppobServerId, setPpobServerId] = useState('');
+  const [ppobInquiry, setPpobInquiry] = useState(null);
+  const [ppobProcessing, setPpobProcessing] = useState(false);
+  const [ppobActiveCategory, setPpobActiveCategory] = useState('all');
+  const [ppobSelectedGame, setPpobSelectedGame] = useState(null);
+  const [ppobSelectedPulsaOperator, setPpobSelectedPulsaOperator] = useState(null);
+  const [ppobSelectedEwallet, setPpobSelectedEwallet] = useState(null);
+
+  const [ppobSuccessData, setPpobSuccessData] = useState(null);
+
+  const [loadingSvcs, setLoadingSvcs] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingOperators, setLoadingOperators] = useState(false);
+
+  const [historyItems, setHistoryItems] = useState([]);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
+  const [depositCountdown, setDepositCountdown] = useState(0);
+  const [qrisCountdown, setQrisCountdown] = useState(0);
+
+  const [toast, setToast] = useState(null);
+  const [modal, setModal] = useState({ show: false, type: 'info', title: '', msg: '', onConfirm: null });
+  const [cancelNotif, setCancelNotif] = useState(null);
+  const [paymentSuccessNotif, setPaymentSuccessNotif] = useState(null);
+  const [insufficientModal, setInsufficientModal] = useState(null);
+  const [hasNewActivity, setHasNewActivity] = useState(false);
+
+  const tabRef = useRef(tab);
+  const lastHistoryIdRef = useRef(null);
+
+  const showToast = (type, title, msg) => {
+    setToast({ type, title, msg });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const showCancelNotif = (amount, subtitle = 'Transaksi telah dibatalkan') => {
+    setCancelNotif({ amount, subtitle });
+    setTimeout(() => setCancelNotif(null), 2800);
+  };
+
+  const showPaymentSuccessNotif = (amount, subtitle = 'Saldo berhasil masuk ke akun kamu!') => {
+    setPaymentSuccessNotif({ amount, subtitle });
+    setTimeout(() => setPaymentSuccessNotif(null), 5500);
+  };
+
+  const showModal = (type, title, msg, onConfirm = null) => {
+    setModal({ show: true, type, title, msg, onConfirm });
+  };
+  const closeModal = () => setModal(prev => ({ ...prev, show: false }));
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('walz_theme') || 'dark';
+    setTheme(savedTheme);
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const n = theme === 'dark' ? 'light' : 'dark';
+    setTheme(n);
+    localStorage.setItem('walz_theme', n);
+    document.documentElement.setAttribute('data-theme', n);
+  };
+
+  useEffect(() => {
+    if (order) {
+      localStorage.setItem('walz_active_order', JSON.stringify(order));
+    } else {
+      localStorage.removeItem('walz_active_order');
+      localStorage.removeItem('walz_order_expiry');
+      localStorage.removeItem('walz_cancel_cooldown');
+    }
+  }, [order]);
+
+  useEffect(() => {
+    if (orderExpiry > 0) {
+      localStorage.setItem('walz_order_expiry', JSON.stringify({ expiry: orderExpiry, savedAt: Date.now() }));
+    }
+  }, [orderExpiry]);
+
+  useEffect(() => {
+    if (cancelCooldown > 0) {
+      localStorage.setItem('walz_cancel_cooldown', JSON.stringify({ cooldown: cancelCooldown, savedAt: Date.now() }));
+    }
+  }, [cancelCooldown]);
+
+  useEffect(() => {
+    api('balance').then(r => {
+      if (r.success) {
+        setUser({ email: r.data.email });
+        setBalance(r.data.balance);
+        setHasPassword(r.data.hasPassword);
+        setUsername(r.data.username || '');
+        setStep('app');
+      } else {
+        setStep('welcome');
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'app') return;
+    setLoadingSvcs(true);
+    api('services').then(r => {
+      setLoadingSvcs(false);
+      if (r.success && Array.isArray(r.data)) {
+        const base = r.data.map(s => ({ ...s, price: null, stock: null }));
+        setServices(base);
+      }
+    });
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'app' || services.length === 0) return;
+    let isSubscribed = true;
+    const loadStocks = async () => {
+      const queue = services.filter(s => s.stock === null);
+      for (let i = 0; i < queue.length; i += 3) {
+        if (!isSubscribed) break;
+        const batch = queue.slice(i, i + 3);
+        await Promise.all(batch.map(async (svc) => {
+          const rc = await api('countries', { service_id: svc.service_code });
+          if (rc.data && Array.isArray(rc.data)) {
+            let totalStock = 0;
+            let minPrice = Infinity;
+            rc.data.forEach(c => {
+              const avail = c.pricelist?.filter(p => p.available) || [];
+              avail.forEach(p => {
+                totalStock += 1;
+                if (p.price < minPrice) minPrice = p.price;
+              });
+            });
+            setServices(prev => prev.map(s =>
+              s.service_code === svc.service_code
+                ? { ...s, stock: totalStock, price: minPrice === Infinity ? null : minPrice }
+                : s
+            ));
+          } else {
+            setServices(prev => prev.map(s => s.service_code === svc.service_code ? { ...s, stock: 0 } : s));
+          }
+        }));
+        await new Promise(res => setTimeout(res, 600));
+      }
+    };
+    loadStocks();
+    return () => { isSubscribed = false; };
+  }, [step, services.length]);
+
+  useEffect(() => {
+    if (countdown <= 0) { clearInterval(timerRef.current); return; }
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [countdown]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setOrderExpiry(prev => prev > 0 ? prev - 1 : 0);
+      setCancelCooldown(prev => prev > 0 ? prev - 1 : 0);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+
+  const fetchHistory = async (showLoader = false) => {
+    if (showLoader) setLoadingHistory(true);
+    const r = await api('history');
+    if (showLoader) setLoadingHistory(false);
+    if (r.success && Array.isArray(r.data)) {
+      const latestId = r.data[0]?.id || null;
+      if (lastHistoryIdRef.current !== null && latestId !== lastHistoryIdRef.current && tabRef.current !== 'activity') {
+        setHasNewActivity(true);
+      }
+      if (latestId) lastHistoryIdRef.current = latestId;
+      setHistoryItems(r.data);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedHistoryItem || selectedHistoryItem.itemType !== 'deposit' ||
+      (selectedHistoryItem.status !== 'pending' && selectedHistoryItem.status !== 'waiting')) {
+      setDepositCountdown(0);
+      return;
+    }
+    const expiredAt = selectedHistoryItem.expired_at
+      ? Number(selectedHistoryItem.expired_at)
+      : Number(selectedHistoryItem.timestamp) + 20 * 60 * 1000;
+    const update = () => setDepositCountdown(Math.max(0, Math.floor((expiredAt - Date.now()) / 1000)));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [selectedHistoryItem?.id, selectedHistoryItem?.status]);
+
+  useEffect(() => {
+    if (!qrisData?.expired_at) { setQrisCountdown(0); return; }
+    const update = () => setQrisCountdown(Math.max(0, Math.floor((Number(qrisData.expired_at) - Date.now()) / 1000)));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [qrisData?.id]);
+
+  const downloadQrisImage = async (imageUrl) => {
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `qris-payment-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      showToast('success', 'Berhasil', 'Gambar QRIS berhasil diunduh');
+    } catch {
+      window.open(imageUrl, '_blank');
+    }
+  };
+
+  useEffect(() => {
+    let interval;
+    if (tab === 'activity') {
+      fetchHistory(false);
+      interval = setInterval(() => fetchHistory(false), 5000);
+    }
+    return () => clearInterval(interval);
+  }, [tab]);
+
+  useEffect(() => {
+    if (selectedHistoryItem) {
+      const updated = historyItems.find(h => h.id === selectedHistoryItem.id);
+      if (updated && updated.status !== selectedHistoryItem.status) {
+        setSelectedHistoryItem(updated);
+        api('balance').then(res => res.success && setBalance(res.data.balance));
+      }
+    }
+  }, [historyItems]);
+
+  useEffect(() => {
+    let interval;
+    if (selectedHistoryItem && selectedHistoryItem.itemType === 'deposit' && (selectedHistoryItem.status === 'pending' || selectedHistoryItem.status === 'waiting')) {
+      interval = setInterval(async () => {
+        try {
+          const r = await api('deposit_status', { deposit_id: selectedHistoryItem.id });
+          const newStatus = r.status || r.data?.status;
+          if (r.success && (newStatus === 'paid' || newStatus === 'success' || newStatus === 'completed')) {
+            const creditAmt = selectedHistoryItem?.diterima || selectedHistoryItem?.base_amount || selectedHistoryItem?.amount || 0;
+            setHistoryItems(prev => prev.map(h => h.id === selectedHistoryItem.id ? { ...h, status: 'success' } : h));
+            setSelectedHistoryItem(prev => prev ? { ...prev, status: 'success' } : prev);
+            fetchHistory();
+            api('balance').then(res => res.success && setBalance(res.data.balance));
+            showPaymentSuccessNotif(creditAmt, 'Pembayaran telah diterima!');
+          } else if (r.success && (newStatus === 'cancel' || newStatus === 'canceled')) {
+            fetchHistory();
+          }
+        } catch (error) { }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [selectedHistoryItem]);
+
+  useEffect(() => {
+    let interval;
+    if (qrisData) {
+      interval = setInterval(async () => {
+        try {
+          const r = await api('deposit_status', { deposit_id: qrisData.id });
+          const newStatus = r.status || r.data?.status;
+          if (r.success && (newStatus === 'paid' || newStatus === 'success' || newStatus === 'completed')) {
+            const creditAmt = qrisData.credit_amount || qrisData.actual_amount || 0;
+            setBalance(r.new_balance || r.data?.balance || balance);
+            setQrisData(null);
+            setDepositAmount('');
+            showPaymentSuccessNotif(creditAmt, 'Deposit berhasil masuk ke akun kamu!');
+            api('balance').then(res => res.success && setBalance(res.data.balance));
+          }
+        } catch (error) { }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [qrisData]);
+
+  useEffect(() => {
+    let interval;
+    if (order && (!order.otp_code || order.otp_code === '-' || order.otp_code.trim().length <= 1)) {
+      interval = setInterval(async () => {
+        try {
+          const r = await api('order_status', { order_id: order.order_id });
+          if (r.success && r.data?.otp_code && r.data.otp_code !== '-' && r.data.otp_code.trim().length > 1) {
+            setOrder(prev => ({ ...prev, otp_code: r.data.otp_code, otp_msg: r.data.otp_msg }));
+            showToast('success', 'SMS Masuk!', 'Kode OTP berhasil diterima.');
+            api('balance').then(res => res.success && setBalance(res.data.balance));
+          } else if (r.success && r.data?.status === 'cancel') {
+            setOrder(null);
+            showToast('warning', 'Dibatalkan', 'Pesanan telah dibatalkan.');
+          }
+        } catch (error) { }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [order]);
+
+  useEffect(() => {
+    if (!showSheet) {
+      setExpandedCountry(null);
+      setCountries([]);
+      setCountryQuery('');
+    }
+  }, [showSheet]);
+
+  const fetchPpob = async () => {
+    setPpobError('');
+    setPpobLoading(true);
+    const kodes = ['TSEL','XL','TRI','PLN','PLNPASCH','BPJS','PDAM','INDIHOME','GOPAY','OVO','DANA','MLBB','FF','PUBG','STEAM','NETFLIX','TOKEN'];
+    const results = await Promise.all(kodes.map(k => fetch(`/api/ppob/produk?kode=${k}`).then(r => r.json()).then(r => ({ data: r.data, kode: k }))));
+    const all = results.flatMap(r => Array.isArray(r.data) ? r.data.map(p => ({ ...p, _kode: r.kode })) : []);
+    const r = { success: all.length > 0, data: all.filter(p => p.status === 1).map(p => ({ code: p.code, name: p.nama_produk, brand: p.operator_produk, category: p.category_name, price: p.price, _kode: p._kode })).sort((a, b) => a.price - b.price) };
+    setPpobLoading(false);
+    if (r.success && Array.isArray(r.data)) {
+      setPpobItems(r.data);
+    } else {
+      setPpobError(r.msg || 'Sistem Sedang Maintenance');
+    }
+  };
+
+  const PPOB_CATS = [
+    { id: 'all', label: 'Semua', emoji: '⊞' },
+    { id: 'pulsa', label: 'Pulsa & Data', emoji: '📱' },
+    { id: 'pln', label: 'Listrik', emoji: '⚡' },
+    { id: 'bpjs', label: 'BPJS', emoji: '🏥' },
+    { id: 'pdam', label: 'PDAM', emoji: '💧' },
+    { id: 'internet', label: 'Internet', emoji: '🌐' },
+    { id: 'game', label: 'Game', emoji: '🎮' },
+    { id: 'ewallet', label: 'E-Wallet', emoji: '💳' },
+    { id: 'streaming', label: 'Streaming', emoji: '🎬' },
+  ];
+
+
+  const GAME_LIST = [
+    { id: 'mlbb', label: 'Mobile Legends', emoji: '⚔️', color: '#1a6bff', brand: 'MOBILE LEGEND' },
+    { id: 'ff', label: 'Free Fire', emoji: '🔥', color: '#ff4d00', brand: 'FREE FIRE' },
+    { id: 'pubg', label: 'PUBG Mobile', emoji: '🎯', color: '#f5a623', brand: 'PUBG' },
+    { id: 'steam', label: 'Steam Wallet', emoji: '🎲', color: '#4a90d9', brand: 'STEAM' },
+    { id: 'netflix', label: 'Netflix', emoji: '🎬', color: '#e50914', brand: 'NETFLIX' },
+    { id: 'token', label: 'Token & Voucher', emoji: '🎫', color: '#7c3aed', brand: 'TOKEN' },
+  ];
+
+  const EWALLET_LIST = [
+    { id: 'gopay', label: 'GoPay', emoji: '💚', color: '#00aa5b', brand: 'GOPAY' },
+    { id: 'ovo',   label: 'OVO',   emoji: '💜', color: '#4c3494', brand: 'OVO'   },
+    { id: 'dana',  label: 'DANA',  emoji: '💙', color: '#118eea', brand: 'DANA'  },
+  ];
+
+  const PULSA_LIST = [
+    { id: 'tsel', label: 'Telkomsel', emoji: '🔴', color: '#ff0000', brand: 'TELKOMSEL' },
+    { id: 'xl',   label: 'XL / AXIS', emoji: '🔵', color: '#0057a8', brand: 'XL'       },
+    { id: 'tri',  label: 'Tri (3)',   emoji: '🟡', color: '#f5a623', brand: 'TRI'      },
+  ];
+
+  const getPpobCatId = (p) => {
+    const brand = (p.brand || '').toUpperCase();
+    const cat = (p.category || '').toLowerCase();
+    const name = (p.name || '').toUpperCase();
+    const kode = (p._kode || '').toUpperCase();
+
+    // Gunakan kode sumber sebagai klasifikasi utama (paling akurat)
+    if (kode === 'PLN' || kode === 'PLNPASCH') return 'pln';
+    if (kode === 'BPJS') return 'bpjs';
+    if (kode === 'PDAM') return 'pdam';
+    if (kode === 'INDIHOME') return 'internet';
+    if (kode === 'GOPAY' || kode === 'OVO' || kode === 'DANA') return 'ewallet';
+    if (kode === 'MLBB' || kode === 'FF' || kode === 'PUBG' || kode === 'STEAM') return 'game';
+    if (kode === 'NETFLIX') return 'streaming';
+    if (kode === 'TSEL' || kode === 'XL' || kode === 'TRI') return 'pulsa';
+    // TOKEN kode: bisa PLN token atau voucher lain
+    if (kode === 'TOKEN') {
+      if (brand.includes('PLN') || name.includes('PLN') || name.includes('LISTRIK') ||
+          cat.includes('listrik') || cat.includes('pln') || cat.includes('token pln')) return 'pln';
+      return 'game'; // token non-PLN masuk game/voucher
+    }
+
+    // Fallback berbasis brand/category/name (untuk produk tanpa _kode)
+    // E-wallet
+    if (['GOPAY','OVO','DANA','SHOPEEPAY','LINKAJA'].some(b => brand.includes(b)) || cat.includes('wallet') || cat.includes('e-money')) return 'ewallet';
+    // Game
+    if (['MLBB','FF','PUBG','STEAM','MOBILE LEGEND','FREE FIRE'].some(b => brand.includes(b)) || cat.includes('game') || cat.includes('voucher game')) return 'game';
+    // Streaming
+    if (['NETFLIX','SPOTIFY','YOUTUBE','DISNEY'].some(b => brand.includes(b)) || cat.includes('streaming')) return 'streaming';
+    // PLN — cek brand, category, DAN nama produk agar tidak bocor ke pulsa
+    if (brand.includes('PLN') || brand.includes('POSTPAID') || brand.includes('PASCABAYAR') ||
+        brand.includes('LISTRIK') ||
+        cat.includes('pln') || cat.includes('listrik') || cat.includes('token pln') || cat.includes('pascabayar') || cat.includes('postpaid') || cat.includes('token listrik') ||
+        name.includes('PLN') || name.includes('TOKEN LISTRIK') || name.includes('PASCABAYAR') ||
+        name.includes('LISTRIK')) return 'pln';
+    // BPJS
+    if (brand.includes('BPJS') || cat.includes('bpjs')) return 'bpjs';
+    // PDAM
+    if (brand.includes('PDAM') || cat.includes('pdam') || cat.includes('air minum')) return 'pdam';
+    // Internet
+    if (brand.includes('INDIHOME') || cat.includes('indihome') || cat.includes('internet')) return 'internet';
+    // Pulsa — tambah negatif-check agar produk PLN/BPJS/PDAM tidak masuk sini
+    if ((['TSEL','TELKOMSEL','XL','TRI','INDOSAT','AXIS','SMARTFREN','IM3','SIMPATI'].some(b => brand.includes(b)) || cat.includes('pulsa') || cat.includes('paket data'))
+        && !brand.includes('PLN') && !brand.includes('BPJS') && !brand.includes('PDAM') && !brand.includes('LISTRIK')
+        && !name.includes('PLN') && !name.includes('PASCABAYAR') && !name.includes('LISTRIK')) return 'pulsa';
+    return 'other';
+  };
+
+  const getPpobInputConfig = (product) => {
+    if (!product) return { label: 'ID / Nomor', placeholder: 'Masukkan ID' };
+    const brand = (product.brand || '').toUpperCase();
+    const cat = (product.category || '').toLowerCase();
+    if (brand.includes('MLBB') || brand.includes('MOBILE LEGEND')) return { label: 'User ID', placeholder: 'Contoh: 123456789', needsServer: true, serverLabel: 'Zone ID', serverPlaceholder: 'Contoh: 2201' };
+    if (brand.includes('FF') || brand.includes('FREE FIRE')) return { label: 'User ID', placeholder: 'Masukkan User ID Free Fire' };
+    if (brand.includes('PUBG')) return { label: 'Player ID', placeholder: 'Masukkan Player ID PUBG' };
+    if (cat.includes('game') || brand.includes('STEAM')) return { label: 'User ID', placeholder: 'Masukkan User ID' };
+    if (brand.includes('PLN') || cat.includes('pln') || cat.includes('listrik') || (cat.includes('token') && (brand.includes('PLN') || cat.includes('pln') || cat.includes('listrik')))) return { label: 'No. Meter / ID Pelanggan', placeholder: 'Contoh: 1234567890' };
+    if (brand.includes('BPJS') || cat.includes('bpjs')) return { label: 'No. Virtual Akun BPJS', placeholder: 'Contoh: 8888xxxxxxxx' };
+    if (brand.includes('PDAM') || cat.includes('pdam')) return { label: 'No. Pelanggan PDAM', placeholder: 'Masukkan nomor pelanggan' };
+    if (brand.includes('INDIHOME') || cat.includes('internet')) return { label: 'No. Pelanggan IndiHome', placeholder: 'Masukkan nomor pelanggan' };
+    if (['GOPAY','OVO','DANA'].some(b => brand.includes(b))) return { label: 'Nomor HP Terdaftar', placeholder: 'Contoh: 08123456789' };
+    if (['NETFLIX','SPOTIFY'].some(b => brand.includes(b))) return { label: 'Email Akun', placeholder: 'Masukkan email akun' };
+    return { label: 'Nomor HP', placeholder: 'Contoh: 08123456789' };
+  };
+
+  const handlePpobProductSelect = (product) => {
+    ppobRequestIdRef.current++;
+    setPpobSelectedProduct(product);
+    setPpobCustomerId('');
+    setPpobServerId('');
+    setPpobInquiry(null);
+    setPpobSuccessData(null);
+    setPpobProcessing(false);
+    setPpobStep('input');
+  };
+
+  const handlePpobInquiry = async () => {
+    if (!ppobCustomerId.trim()) return;
+    const requestId = ++ppobRequestIdRef.current;
+    setPpobProcessing(true);
+    try {
+      const r = await api('ppob_inquiry', {
+        product_code: ppobSelectedProduct.code,
+        customer_id: ppobCustomerId,
+        category: ppobSelectedProduct.category || '',
+        ...(ppobServerId ? { server_id: ppobServerId } : {}),
+      });
+      if (ppobRequestIdRef.current !== requestId) return;
+      setPpobProcessing(false);
+      if (r.success) {
+        setPpobInquiry(r.data);
+        setPpobStep('confirm');
+      } else {
+        showToast('error', 'Gagal', r.msg || 'ID pelanggan tidak ditemukan atau tidak valid.');
+      }
+    } catch {
+      if (ppobRequestIdRef.current !== requestId) return;
+      setPpobProcessing(false);
+      showToast('error', 'Error', 'Koneksi ke server gagal.');
+    }
+  };
+
+  const handlePpobPayment = async () => {
+    const requestId = ++ppobRequestIdRef.current;
+    setPpobProcessing(true);
+    try {
+      const r = await api('ppob_pay', {
+        product_code: ppobSelectedProduct.code,
+        customer_id: ppobCustomerId,
+        harga: ppobSelectedProduct.price,
+        namaProduk: ppobSelectedProduct.name,
+        category: ppobSelectedProduct.category || '',
+        ...(ppobServerId ? { server_id: ppobServerId } : {}),
+      });
+      if (ppobRequestIdRef.current !== requestId) return;
+      setPpobProcessing(false);
+      if (r.success) {
+        setPpobSuccessData(r.data || {});
+        setPpobStep('success');
+        api('balance').then(res => res.success && setBalance(res.data.balance));
+        fetchHistory();
+      } else {
+        const isInsufficient = r.error_code === 'INSUFFICIENT_BALANCE' || (r.msg && r.msg.toLowerCase().includes('tidak cukup'));
+        if (isInsufficient) {
+          setPpobStep('list');
+          const required = r.required ? Number(r.required) : null;
+          setInsufficientModal({ balance, required, kekurangan: required ? Math.max(0, required - balance) : null });
+        } else {
+          showToast('error', 'Transaksi Gagal', r.msg || 'Transaksi gagal diproses.');
+        }
+      }
+    } catch {
+      if (ppobRequestIdRef.current !== requestId) return;
+      setPpobProcessing(false);
+      showToast('error', 'Error', 'Koneksi ke server gagal.');
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'ppob') {
+      if (ppobItems.length === 0 && !ppobError) fetchPpob();
+    } else {
+      ppobRequestIdRef.current++;
+      setPpobStep('list');
+      setPpobSelectedProduct(null);
+      setPpobCustomerId('');
+      setPpobServerId('');
+      setPpobInquiry(null);
+      setPpobSuccessData(null);
+      setPpobProcessing(false);
+      setPpobActiveCategory('all');
+      setPpobQuery('');
+      setPpobSelectedGame(null);
+      setPpobSelectedPulsaOperator(null);
+      setPpobSelectedEwallet(null);
+    }
+  }, [tab]);
+
+  const startCountdown = () => {
+    clearInterval(timerRef.current);
+    setCountdown(OTP_DURATION);
+  };
+
+  const handleForgotCheck = async () => {
+    if (!email) {
+      showToast('warning', 'Perhatian', 'Harap masukkan alamat email terlebih dahulu.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const check = await api('check_email', { email });
+      if (!check.exists) {
+        setBusy(false);
+        showToast('error', 'Belum Terdaftar', 'Email ini belum terdaftar di sistem kami.');
+        return;
+      }
+      sendOtp(email, 'reset');
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error', 'Gagal memproses permintaan.');
+    }
+  };
+
+  const sendOtp = async (targetEmail, mode = 'register') => {
+    if (!targetEmail) return;
+    setBusy(true);
+    try {
+      const r = await authApi('request-otp', { email: targetEmail });
+      setBusy(false);
+      if (r.success) {
+        setOtpMode(mode);
+        setOtpCode('');
+        setStep(mode === 'reset' ? 'forgot_otp' : 'register_otp');
+        startCountdown();
+      } else {
+        showToast('error', 'Gagal', r.msg || 'Gagal mengirim OTP ke email kamu.');
+      }
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error', 'Gagal terhubung ke server.');
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (otpCode.length !== 6) return;
+    setBusy(true);
+    try {
+      const r = await authApi('verify-otp', { email, code: otpCode, mode: otpMode });
+      setBusy(false);
+      if (r.success) {
+        if (otpMode === 'reset') {
+          setResetToken(r.resetToken);
+          setNewPass(''); setConfirmPass('');
+          setStep('reset_pw');
+        } else {
+          if (r.needsSetup) {
+            setStep('register_setup');
+          } else {
+            setUser(r.user);
+            setBalance(r.user.balance);
+            setUsername(r.user.username);
+            setHasPassword(true);
+            setStep('app');
+          }
+        }
+      } else {
+        showToast('error', 'Verifikasi Gagal', r.msg || 'Kode OTP salah atau sudah expired.');
+      }
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error', 'Kesalahan koneksi verifikasi OTP.');
+    }
+  };
+
+  const completeSetup = async () => {
+    if (newPass.length < 6 || newPass !== confirmPass || !setupUser) return;
+    setBusy(true);
+    try {
+      const r = await authApi('set-password', { newPassword: newPass, setupMode: true, username: setupUser });
+      setBusy(false);
+      if (r.success) {
+        api('balance').then(res => {
+          if (res.success) {
+            setUser({ email: res.data.email });
+            setBalance(res.data.balance);
+            setUsername(res.data.username);
+            setHasPassword(true);
+            setStep('app');
+          }
+        });
+      } else {
+        showToast('error', 'Gagal', r.msg || 'Gagal menyimpan pengaturan profil.');
+      }
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error', 'Terjadi kesalahan sistem.');
+    }
+  };
+
+  const loginWithPassword = async () => {
+    if (!email || !pwInput) return;
+    setBusy(true);
+    try {
+      const r = await authApi('login-password', { email, password: pwInput });
+      setBusy(false);
+      if (r.success) {
+        setUser(r.user);
+        setBalance(r.user.balance);
+        setUsername(r.user.username);
+        setHasPassword(true);
+        setStep('app');
+      } else {
+        if (r.msg.toLowerCase().includes('belum terdaftar')) {
+          showToast('error', 'Belum Terdaftar', r.msg);
+        } else {
+          showToast('error', 'Login Gagal', r.msg);
+        }
+      }
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error Sistem', 'Gagal terhubung ke server saat login.');
+    }
+  };
+
+  const resetPassword = async () => {
+    if (newPass.length < 6 || newPass !== confirmPass) return;
+    setBusy(true);
+    try {
+      const r = await authApi('reset-password', { resetToken, newPassword: newPass });
+      setBusy(false);
+      if (r.success) {
+        setUser(r.user);
+        setBalance(r.user.balance);
+        setUsername(r.user.username);
+        setHasPassword(true);
+        setStep('app');
+        showToast('success', 'Berhasil', 'Password baru berhasil disimpan.');
+      } else {
+        showToast('error', 'Gagal', r.msg || 'Proses reset password gagal, coba lagi nanti.');
+      }
+    } catch (e) {
+      setBusy(false);
+      showToast('error', 'Error', 'Gagal melakukan reset password.');
+    }
+  };
+
+  const logout = async () => {
+    await api('logout');
+    setUser(null); setBalance(0); setStep('welcome');
+    setEmail(''); setOtpCode(''); setPwInput(''); setOrder(null); setServices([]);
+  };
+
+  const openService = async svc => {
+    setSelectedSvc(svc);
+    setShowSheet(true);
+    setLoadingCountries(true);
+    const r = await api('countries', { service_id: svc.service_code });
+    setLoadingCountries(false);
+    if (r.success && Array.isArray(r.data)) {
+      const filtered = r.data
+        .map(c => ({
+          ...c,
+          available: c.pricelist?.filter(p => p.available) || [],
+        }))
+        .filter(c => c.available.length > 0)
+        .sort((a, b) => {
+          const ai = a.name?.toLowerCase().includes('indonesia') ? 0 : 1;
+          const bi = b.name?.toLowerCase().includes('indonesia') ? 0 : 1;
+          return ai - bi || a.available[0].price - b.available[0].price;
+        });
+      setCountries(filtered);
+    }
+  };
+
+  const handleOrderClick = async (country, provider) => {
+    setSelectedOrderContext({ country, provider });
+    setShowOperatorModal(true);
+    setOperators([]);
+    setLoadingOperators(true);
+    try {
+      const r = await api('operators', { country: country.name, provider_id: provider.provider_id });
+      setLoadingOperators(false);
+      if (r.success && Array.isArray(r.data) && r.data.length > 0) {
+        const seen = new Set();
+        const deduped = r.data.filter(op => {
+          const key = op.name?.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setOperators(deduped);
+      } else {
+        setOperators([{ id: 'any', name: 'any' }]);
+      }
+    } catch (e) {
+      setLoadingOperators(false);
+      setOperators([{ id: 'any', name: 'any' }]);
+    }
+  };
+
+  const confirmOrder = async (operatorObj) => {
+    const operatorName = operatorObj.name;
+    setShowOperatorModal(false);
+    setOrderingProv(selectedOrderContext.provider.provider_id);
+    showToast('info', 'Memproses', 'Membuat pesanan...');
+
+    try {
+      const r = await api('order_create', {
+        number_id: selectedOrderContext.country.number_id,
+        provider_id: selectedOrderContext.provider.provider_id,
+        service_id: selectedSvc.service_code,
+        service_name: selectedSvc.service_name,
+        service_img: selectedSvc.service_img,
+        operator_id: operatorName
+      });
+      setOrderingProv(null);
+      if (r.success) {
+        setOrder({ ...r.data, service_name: selectedSvc.service_name, service_img: selectedSvc.service_img, operator: operatorName, country: selectedOrderContext.country.name });
+        setOrderExpiry(1200);
+        setCancelCooldown(180);
+        setShowSheet(false);
+        api('balance').then(res => res.success && setBalance(res.data.balance));
+      } else {
+        const isInsufficient =
+          r.error_code === 'INSUFFICIENT_BALANCE' ||
+          (r.msg && r.msg.toLowerCase().includes('tidak cukup'));
+        if (isInsufficient) {
+          setShowSheet(false);
+          const required = r.required ? Number(r.required) : null;
+          const kekurangan = required ? Math.max(0, required - balance) : null;
+          setInsufficientModal({ balance, required, kekurangan });
+        } else {
+          showToast('error', 'Pesanan Gagal', r.msg || 'Stock penyedia habis, tunggu beberapa saat.');
+        }
+      }
+    } catch (e) {
+      setOrderingProv(null);
+      showToast('error', 'Error', 'Koneksi ke server gagal.');
+    }
+  };
+
+  const cancelOrder = async () => {
+    if (!order) return;
+    const orderPrice = order.price;
+    setCancelingOrder(true);
+    const r = await api('order_cancel', { order_id: order.order_id });
+    setCancelingOrder(false);
+    if (r.success) {
+      setOrder(null);
+      showCancelNotif(orderPrice, 'Saldo telah dikembalikan ke akun kamu');
+      api('balance').then(res => res.success && setBalance(res.data.balance));
+    } else {
+      showToast('error', 'Gagal Batal', r.msg || 'Terjadi kesalahan saat membatalkan.');
+    }
+  };
+
+  const cancelHistoryOrder = async (orderId, orderPrice) => {
+    setBusy(true);
+    const r = await api('order_cancel', { order_id: orderId });
+    setBusy(false);
+    if (r.success) {
+      setSelectedHistoryItem(null);
+      showCancelNotif(orderPrice, 'Saldo telah dikembalikan ke akun kamu');
+      fetchHistory();
+      api('balance').then(res => res.success && setBalance(res.data.balance));
+    } else {
+      showToast('error', 'Gagal Batal', r.msg || 'Terjadi kesalahan saat membatalkan.');
+    }
+  };
+
+  const createQris = async () => {
+    if (!depositAmount || Number(depositAmount) <= 0) return;
+    setCreatingQris(true);
+    try {
+      const r = await api('deposit_create', { amount: Number(depositAmount) });
+      setCreatingQris(false);
+      if (r.success && r.data) {
+        const totalAmt = Number(r.data.total || r.data.amount || depositAmount);
+        const creditAmt = Number(r.data.diterima || r.data.amount || depositAmount);
+        const feeAmt = Number(r.data.fee || (totalAmt - creditAmt) || 0);
+        const expiredAt = r.data.expired_at
+          ? (isNaN(Number(r.data.expired_at)) ? new Date(r.data.expired_at).getTime() : Number(r.data.expired_at))
+          : Date.now() + 20 * 60 * 1000;
+        setQrisData({ ...r.data, actual_amount: totalAmt, credit_amount: creditAmt, fee_amount: feeAmt, expired_at: expiredAt });
+      } else {
+        showToast('error', 'Gagal', r.msg || 'Gagal membuat QRIS. Silakan cek kembali.');
+      }
+    } catch (e) {
+      setCreatingQris(false);
+      showToast('error', 'Error', 'Terjadi kesalahan jaringan.');
+    }
+  };
+
+  const checkHistoryDeposit = async (depId) => {
+    setBusy(true);
+    const r = await api('deposit_status', { deposit_id: depId });
+    setBusy(false);
+    if (r.success && (r.status === 'paid' || r.data?.status === 'paid' || r.data?.status === 'success' || r.status === 'success')) {
+      const creditAmt = selectedHistoryItem?.diterima || selectedHistoryItem?.base_amount || selectedHistoryItem?.amount || 0;
+      setHistoryItems(prev => prev.map(h => h.id === depId ? { ...h, status: 'success' } : h));
+      setSelectedHistoryItem(prev => prev ? { ...prev, status: 'success' } : prev);
+      showPaymentSuccessNotif(creditAmt, 'Saldo berhasil masuk ke akun kamu!');
+      fetchHistory();
+      api('balance').then(res => res.success && setBalance(res.data.balance));
+    } else {
+      showToast('warning', 'Pending', 'Pembayaran belum masuk.');
+    }
+  };
+
+  const cancelHistoryDeposit = async (depId, depAmount) => {
+    setBusy(true);
+    const r = await api('deposit_cancel', { deposit_id: depId });
+    setBusy(false);
+    if (r.success) {
+      setSelectedHistoryItem(null);
+      showCancelNotif(depAmount, 'Deposit telah dibatalkan');
+      fetchHistory();
+    } else {
+      showToast('error', 'Gagal Batal', 'Gagal membatalkan transaksi.');
+    }
+  };
+
+  const checkQrisPayment = async () => {
+    if (!qrisData?.id) return;
+    setBusy(true);
+    const r = await api('deposit_status', { deposit_id: qrisData.id });
+    setBusy(false);
+    const paid = r.success && (r.status === 'paid' || r.data?.status === 'paid' || r.data?.status === 'success' || r.status === 'success');
+    if (paid) {
+      const creditAmt = qrisData.credit_amount || qrisData.actual_amount || 0;
+      setBalance(r.new_balance || balance);
+      setQrisData(null);
+      setDepositAmount('');
+      showPaymentSuccessNotif(creditAmt, 'Deposit berhasil masuk ke akun kamu!');
+      api('balance').then(res => res.success && setBalance(res.data.balance));
+      fetchHistory();
+    } else {
+      showToast('warning', 'Belum Masuk', 'Pembayaran belum terdeteksi. Pastikan sudah transfer.');
+    }
+  };
+
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    const r = await api('profile_update', { username });
+    setSavingProfile(false);
+    if (r.success) {
+      showToast('success', 'Berhasil', r.msg);
+    } else {
+      showToast('error', 'Gagal', r.msg);
+    }
+  };
+
+  const savePassword = async () => {
+    if (profileNewPass.length < 6 || profileNewPass !== profileConfirmPass) return;
+    setSavingPass(true);
+    const r = await authApi('set-password', { currentPassword: curPass || undefined, newPassword: profileNewPass });
+    setSavingPass(false);
+    if (r.success) {
+      setHasPassword(true);
+      setCurPass(''); setProfileNewPass(''); setProfileConfirmPass('');
+      showToast('success', 'Berhasil', r.msg || 'Password berhasil disimpan');
+    } else {
+      showToast('error', 'Gagal', r.msg);
+    }
+  };
+
+  const filteredSvcs = useMemo(() => {
+    return services.filter(s => s.service_name?.toLowerCase().includes(query.toLowerCase()));
+  }, [services, query]);
+
+  const filteredCountries = useMemo(() => {
+    return countries.filter(c => c.name?.toLowerCase().includes(countryQuery.toLowerCase()));
+  }, [countries, countryQuery]);
+
+  const filteredPpob = useMemo(() => {
+    return ppobItems.filter(p => {
+      let matchSearch = true;
+      if (ppobQuery) {
+        const q = ppobQuery.toLowerCase().trim();
+        const nameLow = (p.name || '').toLowerCase();
+        const brandLow = (p.brand || '').toLowerCase();
+        const catLow = (p.category || '').toLowerCase();
+        // Full match first
+        if (nameLow.includes(q) || brandLow.includes(q) || catLow.includes(q)) {
+          matchSearch = true;
+        } else {
+          // Token match: split by space, "/" or "&" so "XL / AXIS" → ["xl","axis"] matches brand "XL"
+          const tokens = q.split(/[\s/&|,]+/).filter(t => t.length > 1);
+          matchSearch = tokens.some(t => nameLow.includes(t) || brandLow.includes(t) || catLow.includes(t));
+        }
+      }
+      const matchCat = ppobActiveCategory === "all" || getPpobCatId(p) === ppobActiveCategory;
+      return matchSearch && matchCat;
+    });
+  }, [ppobItems, ppobQuery, ppobActiveCategory]);
+
+  const groupedPpob = useMemo(() => {
+    const groups = {};
+    filteredPpob.forEach(p => {
+      const cat = getPpobCatId(p);
+      const info = PPOB_CATS.find(c => c.id === cat) || { id: cat, label: cat, emoji: "📦" };
+      if (!groups[cat]) groups[cat] = { info, items: [] };
+      groups[cat].items.push(p);
+    });
+    return Object.values(groups);
+  }, [filteredPpob]);
+
+  if (step === 'init') {
+    return (
+      <div className="auth-screen">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (step === 'welcome') {
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="welcome-v2">
+          <div className="welcome-v2-hero">
+            <div className="welcome-badge-v2">
+              <div className="dot" />
+              <span>Sistem Online</span>
+            </div>
+            <div className="welcome-v2-logo-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                className="welcome-v2-logo-img"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="welcome-v2-ring" />
+              <div className="welcome-v2-ring-2" />
+            </div>
+            <h1 className="welcome-v2-title">WALZ<span>SHOP</span></h1>
+            <p className="welcome-v2-sub">Layanan Digital Premium</p>
+            <div className="welcome-stats-row">
+              <div className="stat-cell"><strong>1000+</strong><label>Layanan</label></div>
+              <div className="stat-divider" />
+              <div className="stat-cell"><strong>85+</strong><label>Negara</label></div>
+              <div className="stat-divider" />
+              <div className="stat-cell"><strong>24/7</strong><label>Support</label></div>
+            </div>
+          </div>
+          <div className="welcome-v2-actions">
+            <button className="btn-hero-primary" onClick={() => setStep('register')}>
+              <span>📝</span>
+              <span>Buat Akun Baru</span>
+            </button>
+            <button className="btn-hero-secondary" onClick={() => setStep('login')}>
+              <span>🔑</span>
+              <span>Masuk ke Akun</span>
+            </button>
+            <p className="welcome-footer-note">Aman &amp; Terpercaya · <span>✓ Terenkripsi</span></p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'login') {
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Masuk ke Akun 👋</div>
+            <div className="auth-card-desc">Masukkan email dan password akun kamu</div>
+            <div className="input-field">
+              <label>Alamat Email</label>
+              <input type="email" value={email} placeholder="nama@email.com" onChange={e => setEmail(e.target.value)} />
+            </div>
+            <div className="input-field">
+              <label>Password</label>
+              <div className="input-icon-wrap">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={pwInput}
+                  placeholder="••••••••"
+                  onChange={e => setPwInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !busy && email && pwInput && loginWithPassword()}
+                />
+                <EyeToggle show={showPw} onToggle={() => setShowPw(v => !v)} />
+              </div>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={loginWithPassword}
+              disabled={!email || !pwInput || busy}
+              style={{ height: 52, borderRadius: 'var(--r-full)', marginTop: 6 }}
+            >
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memproses...</> : '🔑 Masuk Sekarang'}
+            </button>
+            <div className="auth-card-links">
+              <button className="auth-link-btn" onClick={() => setStep('forgot')}>Lupa Password?</button>
+              <span className="auth-link-sep">·</span>
+              <button className="auth-link-btn" onClick={() => { setStep('welcome'); setEmail(''); setPwInput(''); }}>← Kembali</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'register') {
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Daftar Akun Baru 🚀</div>
+            <div className="auth-card-desc">Masukkan email aktif untuk menerima kode verifikasi OTP</div>
+            <div className="input-field">
+              <label>Alamat Email</label>
+              <input type="email" value={email} placeholder="nama@email.com"
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !busy && email && sendOtp(email, 'register')} />
+            </div>
+            <button className="btn btn-primary" onClick={() => sendOtp(email, 'register')} disabled={!email || busy} style={{ height: 52, borderRadius: 'var(--r-full)', marginTop: 6 }}>
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Mengirim...</> : '✉️ Kirim Kode OTP'}
+            </button>
+            <div className="auth-card-links">
+              <button className="auth-link-btn" onClick={() => { setStep('welcome'); setEmail(''); }}>← Batal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'register_otp' || step === 'forgot_otp') {
+    const isReset = step === 'forgot_otp';
+    const timerClass = countdown > 60 ? '' : countdown > 0 ? 'warning' : 'expired';
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Verifikasi OTP 📬</div>
+            <div className="otp-info">Kode dikirim ke <strong>{email}</strong></div>
+            <div className={`timer-bar ${timerClass}`}>
+              <span className="timer-label">{countdown > 0 ? 'Kode berlaku' : 'Kode expired'}</span>
+              <span className={`timer-time ${timerClass}`}>{countdown > 0 ? formatTime(countdown) : '00:00'}</span>
+            </div>
+            <div className="input-field">
+              <label>Kode OTP (6 digit)</label>
+              <input type="text" inputMode="numeric" maxLength={6} value={otpCode} placeholder="••••••"
+                style={{ fontSize: '1.5rem', letterSpacing: '0.3em', textAlign: 'center' }}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={e => e.key === 'Enter' && otpCode.length === 6 && !busy && verifyOtp()}
+                disabled={countdown === 0} />
+            </div>
+            <button className="btn btn-primary" onClick={verifyOtp} disabled={otpCode.length !== 6 || busy || countdown === 0} style={{ borderRadius: 'var(--r-full)' }}>
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Verifikasi...</> : '✅ Verifikasi OTP'}
+            </button>
+            <button className="btn btn-secondary" onClick={() => sendOtp(email, isReset ? 'reset' : 'register')} disabled={busy || countdown > 0} style={{ borderRadius: 'var(--r-full)' }}>
+              {countdown > 0 ? `Kirim Ulang (${formatTime(countdown)})` : '🔄 Kirim Ulang OTP'}
+            </button>
+            <div className="auth-card-links">
+              <button className="auth-link-btn" onClick={() => { setStep(isReset ? 'forgot' : 'register'); setOtpCode(''); }}>← Ganti Email</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'register_setup') {
+    const isMatch = newPass === confirmPass;
+    const isValid = setupUser.length > 2 && newPass.length >= 6 && isMatch;
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Lengkapi Profil ✍️</div>
+            <div className="auth-card-desc">Buat username unik dan password agar kedepannya bisa langsung login tanpa OTP.</div>
+            <div className="input-field">
+              <label>Username</label>
+              <input type="text" value={setupUser} placeholder="Nama unik tanpa spasi" onChange={e => setSetupUser(e.target.value.replace(/\s/g, ''))} />
+            </div>
+            <div className="input-field">
+              <label>Password Baru</label>
+              <div className="input-icon-wrap">
+                <input type={showNewPw ? 'text' : 'password'} value={newPass} placeholder="Min. 6 karakter" onChange={e => setNewPass(e.target.value)} />
+                <EyeToggle show={showNewPw} onToggle={() => setShowNewPw(v => !v)} />
+              </div>
+            </div>
+            <div className="input-field">
+              <label>Konfirmasi Password</label>
+              <div className="input-icon-wrap">
+                <input type={showConfPw ? 'text' : 'password'} value={confirmPass} placeholder="Ulangi password" onChange={e => setConfirmPass(e.target.value)} />
+                <EyeToggle show={showConfPw} onToggle={() => setShowConfPw(v => !v)} />
+              </div>
+            </div>
+            {confirmPass && !isMatch && <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginBottom: 12 }}>❌ Password tidak cocok</p>}
+            {confirmPass && isMatch && newPass.length >= 6 && <p style={{ fontSize: '0.78rem', color: 'var(--green)', marginBottom: 12 }}>✅ Password cocok</p>}
+            <button className="btn btn-primary" onClick={completeSetup} disabled={!isValid || busy} style={{ height: 52, borderRadius: 'var(--r-full)' }}>
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Menyimpan...</> : '🚀 Mulai Gunakan Aplikasi'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'forgot') {
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Lupa Password 🔒</div>
+            <div className="auth-card-desc">Masukkan email akun kamu yang pernah terdaftar untuk reset password.</div>
+            <div className="input-field">
+              <label>Email Terdaftar</label>
+              <input type="email" value={email} placeholder="nama@email.com" onChange={e => setEmail(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" onClick={handleForgotCheck} disabled={!email || busy} style={{ borderRadius: 'var(--r-full)' }}>
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memeriksa...</> : '📩 Lanjutkan'}
+            </button>
+            <div className="auth-card-links">
+              <button className="auth-link-btn" onClick={() => setStep('login')}>← Batal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'reset_pw') {
+    const isMatch = newPass === confirmPass;
+    const isValid = newPass.length >= 6 && isMatch;
+    return (
+      <div className="auth-v2-screen">
+        <div className="auth-orbs" aria-hidden="true">
+          <div className="auth-orb auth-orb-1" />
+          <div className="auth-orb auth-orb-2" />
+          <div className="auth-orb auth-orb-3" />
+        </div>
+        <div className="toast-container">
+          {toast && (
+            <div className="toast">
+              <div className={`toast-icon ${toast.type}`}>
+                {toast.type === 'error' && <IconCross />}
+                {toast.type === 'success' && <IconCheck />}
+                {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+                {toast.type === 'warning' && <IconWarning />}
+              </div>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-msg">{toast.msg}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="auth-card-v2">
+          <div className="auth-card-top">
+            <div className="auth-logo-ring-wrap">
+              <img
+                src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                alt="WALZ SHOP"
+                onError={e => { e.target.style.display = 'none'; }}
+              />
+              <div className="auth-ring" />
+            </div>
+            <div className="auth-title-v2">WALZ <span style={{ color: 'var(--cyan)', WebkitTextFillColor: 'var(--cyan)' }}>SHOP</span></div>
+          </div>
+          <div className="auth-card-body-v2">
+            <div className="auth-card-headline">Password Baru 🔐</div>
+            <div className="auth-card-desc">Buat password baru untuk akun kamu</div>
+            <div className="input-field">
+              <label>Password Baru</label>
+              <div className="input-icon-wrap">
+                <input type={showNewPw ? 'text' : 'password'} value={newPass} placeholder="Min. 6 karakter" onChange={e => setNewPass(e.target.value)} />
+                <EyeToggle show={showNewPw} onToggle={() => setShowNewPw(v => !v)} />
+              </div>
+            </div>
+            <div className="input-field">
+              <label>Konfirmasi Password</label>
+              <div className="input-icon-wrap">
+                <input type={showConfPw ? 'text' : 'password'} value={confirmPass} placeholder="Ulangi password" onChange={e => setConfirmPass(e.target.value)} />
+                <EyeToggle show={showConfPw} onToggle={() => setShowConfPw(v => !v)} />
+              </div>
+            </div>
+            {confirmPass && !isMatch && <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginBottom: 12 }}>❌ Password tidak cocok</p>}
+            {confirmPass && isMatch && newPass.length >= 6 && <p style={{ fontSize: '0.78rem', color: 'var(--green)', marginBottom: 12 }}>✅ Password cocok</p>}
+            <button className="btn btn-primary" onClick={resetPassword} disabled={!isValid || busy} style={{ borderRadius: 'var(--r-full)' }}>
+              {busy ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Menyimpan...</> : '💾 Simpan Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {cancelNotif && (
+        <div className="cancel-notif-overlay" onClick={() => setCancelNotif(null)}>
+          <div className="cancel-notif-card">
+            <div className="cancel-notif-ripple" />
+            <div className="cancel-notif-ripple delay" />
+            <div className="cancel-notif-icon">
+              <IconCross />
+            </div>
+            <div className="cancel-notif-title">Transaksi Dibatalkan</div>
+            <div className="cancel-notif-subtitle">{cancelNotif.subtitle}</div>
+            {cancelNotif.amount > 0 && (
+              <div className="cancel-notif-amount">{fmt(cancelNotif.amount)}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {paymentSuccessNotif && (
+        <div className="success-notif-overlay" onClick={() => setPaymentSuccessNotif(null)}>
+          <div className="success-confetti-wrap">
+            {[...Array(28)].map((_, i) => {
+              const colors = ['#00e87a', '#4f8cff', '#ffb340', '#ff4060', '#00d4ff', '#a78bfa', '#f472b6', '#fb923c', '#34d399', '#60a5fa'];
+              const color = colors[i % colors.length];
+              const left = ((i * 3.7 + 1.5) % 97) + 1.5;
+              const delay = (i * 0.09) % 2.1;
+              const duration = 1.3 + (i % 6) * 0.22;
+              const size = 6 + (i % 7) * 2;
+              const isCircle = i % 4 !== 0;
+              const isSquare = i % 4 === 0;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    left: `${left}%`,
+                    top: '-24px',
+                    width: isSquare ? size : isCircle ? size * 0.7 : size,
+                    height: isSquare ? size * 0.55 : isCircle ? size * 0.7 : size * 0.45,
+                    background: color,
+                    borderRadius: isCircle ? '50%' : '3px',
+                    animation: `confettiFall ${duration}s ${delay}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+                    transform: `rotate(${(i * 53) % 360}deg)`,
+                    opacity: 0.92,
+                    boxShadow: `0 0 6px ${color}88`,
+                  }}
+                />
+              );
+            })}
+          </div>
+          <div className="success-notif-card" onClick={e => e.stopPropagation()}>
+            <div className="success-notif-ripple" />
+            <div className="success-notif-ripple delay1" />
+            <div className="success-notif-ripple delay2" />
+            <div className="success-notif-icon">
+              <IconCheck />
+            </div>
+            <div className="success-notif-emoji">🎉</div>
+            <div className="success-notif-title">Pembayaran Berhasil!</div>
+            <div className="success-notif-subtitle">{paymentSuccessNotif.subtitle}</div>
+            {paymentSuccessNotif.amount > 0 && (
+              <div className="success-notif-amount">+{fmt(paymentSuccessNotif.amount)}</div>
+            )}
+            <div className="success-notif-tap">Ketuk di mana saja untuk menutup</div>
+          </div>
+        </div>
+      )}
+      {insufficientModal && (
+        <div className="modal-overlay open" onClick={() => setInsufficientModal(null)}>
+          <div className="modal-content popIn" onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '32px 24px', maxWidth: 320, borderRadius: 24 }}>
+            <div style={{
+              width: 80, height: 80, borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(255,179,64,0.18) 0%, rgba(255,64,96,0.18) 100%)',
+              border: '2px solid rgba(255,179,64,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 18px', fontSize: '2.2rem',
+              boxShadow: '0 0 32px rgba(255,179,64,0.15)',
+              animation: 'popIn 0.4s var(--ease-out)',
+            }}>💳</div>
+
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--amber)', marginBottom: 6, fontFamily: 'var(--font-display)', letterSpacing: '-0.5px' }}>
+              Saldo Tidak Cukup!
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-3)', marginBottom: 22, lineHeight: 1.7 }}>
+              {insufficientModal.kekurangan > 0 ? (
+                <>Saldo saat ini <strong style={{ color: 'var(--text)' }}>{fmt(insufficientModal.balance)}</strong>, butuh <strong style={{ color: 'var(--amber)' }}>{fmt(insufficientModal.required)}</strong>.<br />Kekurangan <strong style={{ color: 'var(--red)' }}>{fmt(insufficientModal.kekurangan)}</strong>.</>
+              ) : 'Saldo kamu kurang untuk membeli nomor ini. Top up sekarang!'}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 22 }}>
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: '12px 8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '0.58rem', color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>Saldo Kamu</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{fmt(insufficientModal.balance)}</div>
+              </div>
+              {insufficientModal.required > 0 && (
+                <div style={{ background: 'rgba(255,179,64,0.08)', borderRadius: 12, padding: '12px 8px', border: '1px solid rgba(255,179,64,0.2)' }}>
+                  <div style={{ fontSize: '0.58rem', color: 'var(--amber)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>Dibutuhkan</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--amber)', fontFamily: 'var(--font-mono)' }}>{fmt(insufficientModal.required)}</div>
+                </div>
+              )}
+            </div>
+
+            {insufficientModal.kekurangan > 0 && (
+              <div style={{ background: 'linear-gradient(90deg, rgba(255,64,96,0.1), rgba(255,179,64,0.1))', borderRadius: 10, padding: '8px 14px', marginBottom: 18, border: '1px solid rgba(255,64,96,0.2)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-2)', fontWeight: 600 }}>
+                  Perlu top up minimal <strong style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>{fmt(insufficientModal.kekurangan)}</strong>
+                </div>
+              </div>
+            )}
+
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%', borderRadius: 'var(--r-full)', height: 52, fontSize: '0.95rem', fontWeight: 800, marginBottom: 10, background: 'linear-gradient(135deg, #f59e0b, #ef4444)' }}
+              onClick={() => { setInsufficientModal(null); setTab('deposit'); }}
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" style={{ marginRight: 6 }}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              Top Up Sekarang
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%', borderRadius: 'var(--r-full)', height: 42, fontSize: '0.82rem', opacity: 0.7 }}
+              onClick={() => setInsufficientModal(null)}
+            >
+              Nanti Saja
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="toast-container">
+        {toast && (
+          <div className="toast">
+            <div className={`toast-icon ${toast.type}`}>
+              {toast.type === 'error' && <IconCross />}
+              {toast.type === 'success' && <IconCheck />}
+              {toast.type === 'info' && <span style={{ fontSize: '18px' }}>ℹ️</span>}
+              {toast.type === 'warning' && <IconWarning />}
+            </div>
+            <div className="toast-content">
+              <div className="toast-title">{toast.title}</div>
+              <div className="toast-msg">{toast.msg}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="app-header">
+        <div className="header-row">
+          <div className="header-brand">
+            <div className="header-logo-wrap">
+              <div className="header-logo-circle">
+                <img
+                  src="https://i.postimg.cc/Z5FsJPm8/file-00000000282871f78dd0749d93f64068.png"
+                  alt="WALZ SHOP"
+                  className="header-logo-img-circle"
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+                <div className="header-logo-ring" />
+              </div>
+              <div className="header-brand-text">WALZ <span>SHOP</span></div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="theme-toggle" onClick={() => { setTab('activity'); setHasNewActivity(false); }} title="Riwayat">
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <SvgBell />
+                {hasNewActivity && <div className="notif-dot" />}
+              </div>
+            </button>
+            <button className="theme-toggle" onClick={toggleTheme} title="Ganti Tema">
+              {theme === 'dark' ? <SvgSun /> : <SvgMoon />}
+            </button>
+          </div>
+        </div>
+
+        <div className="balance-card">
+          <div className="balance-bg-shape"></div>
+          <div className="balance-bg-shape2"></div>
+          <div className="balance-content">
+            <div className="balance-left">
+              <div className="balance-label">Total Saldo <span className="balance-badge">Aktif</span></div>
+              <div className="balance-amount">{fmt(balance)}</div>
+              <div className="balance-user">
+                <span className="user-icon">👤</span> {username || user?.email}
+              </div>
+            </div>
+            <div className="balance-right">
+              <button className="btn-topup-new" onClick={() => setTab('deposit')} style={{ whiteSpace: 'nowrap' }}>
+                <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="18"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                Isi Saldo
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="tab-content">
+        {tab === 'virtual' && !order && (
+          <div style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+            <div className="section-header-block">
+              <h2>Layanan Virtual</h2>
+              <span className="count">{services.length} layanan</span>
+            </div>
+            <div className="search-wrap">
+              <span className="search-icon">⌕</span>
+              <input value={query} placeholder="Cari layanan..." onChange={e => setQuery(e.target.value)} />
+            </div>
+            {filteredSvcs.length === 0 && !loadingSvcs ? (
+              <div className="empty-state">
+                <span className="icon">🔍</span>
+                <p>Tidak ada layanan ditemukan</p>
+              </div>
+            ) : (
+              <div className="service-grid">
+                {filteredSvcs.map((s, i) => (
+                  <button key={s.service_code} className="svc-card" style={{ animationDelay: `${(i % 15) * 0.03}s` }} onClick={() => openService(s)}>
+                    <div className="svc-icon-wrap">
+                      <img src={s.service_img} alt={s.service_name} className="svc-icon" onError={e => { e.target.style.display = 'none'; }} />
+                    </div>
+                    <div className="svc-name">{s.service_name}</div>
+                    <div className="svc-price">{s.price ? fmt(s.price) : '...'}</div>
+                    <div className={`svc-stock ${s.stock > 0 ? 'text-green' : s.stock === null ? 'text-muted' : 'text-red'}`}>
+                      {s.stock === null ? '...' : s.stock > 0 ? `${s.stock} total stok` : 'Habis'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'virtual' && order && (
+          <div style={{ animation: 'slideUp 0.4s var(--ease-out) both', paddingBottom: 20 }}>
+
+            
+            <div style={{
+              background: 'linear-gradient(140deg, #0d1b35 0%, #1a2f5c 55%, #0d1b35 100%)',
+              borderRadius: 22,
+              padding: '22px 20px 18px',
+              marginBottom: 14,
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)',
+              border: '1px solid rgba(79,140,255,0.18)',
+            }}>
+              
+              <div style={{ position: 'absolute', top: -40, right: -40, width: 140, height: 140, background: 'radial-gradient(circle, rgba(79,140,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: -30, left: -30, width: 100, height: 100, background: 'radial-gradient(circle, rgba(0,232,122,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+              
+              <div style={{ position: 'absolute', top: 18, right: 20, width: 36, height: 28, borderRadius: 5, background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,215,0,0.08))', border: '1px solid rgba(255,215,0,0.2)', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2, padding: 4 }}>
+                {[...Array(4)].map((_, i) => <div key={i} style={{ background: 'rgba(255,215,0,0.2)', borderRadius: 2 }} />)}
+              </div>
+
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                <div style={{ position: 'relative' }}>
+                  <FlagImg name={order.country} size={36} style={{ borderRadius: 6, boxShadow: '0 3px 10px rgba(0,0,0,0.4)' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Negara</div>
+                  <div style={{ fontSize: '1rem', color: '#fff', fontWeight: 800, letterSpacing: '-0.3px' }}>{order.country}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: '6px 11px', backdropFilter: 'blur(4px)' }}>
+                  <img src={order.service_img} alt="" style={{ width: 20, height: 20, borderRadius: 4 }} onError={e => { e.target.style.display = 'none'; }} />
+                  <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 700 }}>{order.service_name}</span>
+                </div>
+              </div>
+
+              
+              <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 5 }}>NOMOR VIRTUAL</div>
+
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                <div
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '1.45rem', fontWeight: 900, color: '#fff', letterSpacing: '1.5px', cursor: 'pointer', flex: 1, textShadow: '0 0 20px rgba(79,140,255,0.5)' }}
+                  onClick={() => { navigator.clipboard.writeText(order.phone_number); showToast('success', 'Tersalin', 'Nomor disalin ke clipboard'); }}
+                >
+                  {order.phone_number}
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(order.phone_number); showToast('success', 'Tersalin', 'Nomor berhasil disalin'); }}
+                  style={{ background: 'rgba(79,140,255,0.2)', border: '1px solid rgba(79,140,255,0.35)', borderRadius: 9, padding: '7px 13px', color: '#7ab3ff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  Salin
+                </button>
+              </div>
+
+              
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Operator</div>
+                  <div style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 700, textTransform: 'capitalize' }}>{order.operator || 'Any'}</div>
+                </div>
+                <div style={{ flex: 1, background: 'rgba(255,179,64,0.07)', borderRadius: 10, padding: '8px 10px', border: '1px solid rgba(255,179,64,0.15)' }}>
+                  <div style={{ fontSize: '0.55rem', color: 'rgba(255,179,64,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Harga</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--amber)', fontWeight: 800 }}>{fmt(order.price)}</div>
+                </div>
+                <div style={{ flex: 1, background: orderExpiry < 120 ? 'rgba(255,64,96,0.08)' : 'rgba(0,232,122,0.06)', borderRadius: 10, padding: '8px 10px', border: `1px solid ${orderExpiry < 120 ? 'rgba(255,64,96,0.2)' : 'rgba(0,232,122,0.15)'}` }}>
+                  <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Sisa Waktu</div>
+                  <div style={{ fontSize: '0.8rem', color: orderExpiry < 120 ? 'var(--red)' : 'var(--green)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{formatTime(orderExpiry)}</div>
+                </div>
+              </div>
+            </div>
+
+            
+            {order.otp_code && order.otp_code !== '-' && order.otp_code.trim().length > 1 ? (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(0,232,122,0.1) 0%, rgba(0,232,122,0.05) 100%)',
+                border: '1px solid rgba(0,232,122,0.3)',
+                borderRadius: 18,
+                padding: '22px 20px',
+                marginBottom: 14,
+                textAlign: 'center',
+                boxShadow: '0 4px 20px rgba(0,232,122,0.08)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', boxShadow: '0 0 12px rgba(0,232,122,0.5)' }}>
+                    <IconCheck />
+                  </div>
+                  <span style={{ color: 'var(--green)', fontWeight: 800, fontSize: '0.95rem' }}>OTP Berhasil Diterima!</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 7, marginBottom: 14 }}>
+                  {order.otp_code.split('').map((digit, i) => (
+                    <div key={i} style={{
+                      width: 40, height: 50,
+                      background: 'rgba(0,232,122,0.12)',
+                      border: '1.5px solid rgba(0,232,122,0.4)',
+                      borderRadius: 10,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1.6rem', fontWeight: 900, color: 'var(--green)',
+                      fontFamily: 'var(--font-mono)',
+                      boxShadow: '0 2px 8px rgba(0,232,122,0.15)',
+                      animation: `slideUp 0.3s ${i * 0.06}s var(--ease-out) both`,
+                    }}>{digit}</div>
+                  ))}
+                </div>
+                {order.otp_msg && <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 14, fontStyle: 'italic' }}>{order.otp_msg}</div>}
+                <button
+                  onClick={() => { navigator.clipboard.writeText(order.otp_code); showToast('success', 'Tersalin', 'Kode OTP berhasil disalin'); }}
+                  style={{ background: 'rgba(0,232,122,0.15)', border: '1.5px solid rgba(0,232,122,0.4)', borderRadius: 12, padding: '9px 22px', color: 'var(--green)', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                >
+                  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  Salin Kode OTP
+                </button>
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1.5px dashed rgba(255,255,255,0.1)',
+                borderRadius: 18,
+                padding: '26px 20px',
+                marginBottom: 14,
+                textAlign: 'center',
+              }}>
+                <div style={{ position: 'relative', width: 60, height: 60, margin: '0 auto 14px' }}>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2.5px solid rgba(79,140,255,0.25)', animation: 'spin 2s linear infinite' }} />
+                  <div style={{ position: 'absolute', inset: 3, borderRadius: '50%', border: '2px solid rgba(79,140,255,0.15)', animation: 'spin 3s linear infinite reverse' }} />
+                  <div style={{ position: 'absolute', inset: 8, borderRadius: '50%', background: 'rgba(79,140,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue2)' }}>
+                    <IconClock />
+                  </div>
+                </div>
+                <div style={{ fontWeight: 800, color: 'var(--text)', marginBottom: 5, fontSize: '0.95rem' }}>Menunggu SMS masuk...</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.6 }}>
+                  {cancelCooldown > 0
+                    ? <>Berlaku selama <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--blue2)', fontWeight: 700 }}>{formatTime(cancelCooldown)}</span> lagi</>
+                    : 'Kamu sudah bisa membatalkan pesanan ini.'}
+                </div>
+              </div>
+            )}
+
+            
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1, borderRadius: 14, height: 48 }}
+                onClick={() => setOrder(null)}
+              >
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 5 }}><path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                Beli Lagi
+              </button>
+              {(!order.otp_code || order.otp_code === '-' || order.otp_code.trim().length <= 1) && (
+                <button
+                  className="btn"
+                  style={{ flex: 1, borderRadius: 14, height: 48, background: cancelCooldown > 0 ? 'rgba(255,64,96,0.06)' : 'rgba(255,64,96,0.12)', border: '1.5px solid rgba(255,64,96,0.25)', color: 'var(--red)', fontWeight: 700, cursor: cancelCooldown > 0 ? 'not-allowed' : 'pointer', opacity: cancelCooldown > 0 ? 0.65 : 1 }}
+                  disabled={cancelCooldown > 0 || cancelingOrder}
+                  onClick={cancelOrder}
+                >
+                  {cancelingOrder ? <LoadingSpinner style={{ width: 18, height: 18 }} /> : (
+                    <>
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginRight: 5 }}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                      {cancelCooldown > 0 ? formatTime(cancelCooldown) : 'Batalkan'}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'ppob' && (
+          <div style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+
+            
+            {ppobStep === 'list' && (
+              <>
+                <div className="section-header-block">
+                  <h2>PPOB & Top Up</h2>
+                </div>
+                {ppobError ? (
+                  <div className="maintenance-box">
+                    <IconWarning />
+                    <h3>Sistem Maintenance</h3>
+                    <p>{ppobError}<br />Silakan coba lagi nanti.</p>
+                    <button className="btn btn-secondary" onClick={fetchPpob}>🔄 Cek Kembali</button>
+                  </div>
+                ) : (
+                  <>
+                    
+                    <div className="search-wrap" style={{ marginBottom: 12 }}>
+                      <span className="search-icon">⌕</span>
+                      <input value={ppobQuery} placeholder="Cari produk, brand, layanan..." onChange={e => { setPpobQuery(e.target.value); setPpobActiveCategory('all'); }} />
+                      {ppobQuery && (
+                        <button onClick={() => setPpobQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 10px', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+                      )}
+                    </div>
+
+                    
+                    {!ppobQuery && (
+                      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'none', marginBottom: 4 }}>
+                        {PPOB_CATS.map(cat => {
+                          const count = cat.id === 'all' ? ppobItems.length : ppobItems.filter(p => getPpobCatId(p) === cat.id).length;
+                          if (count === 0 && cat.id !== 'all') return null;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => { setPpobActiveCategory(cat.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
+                              style={{
+                                flexShrink: 0,
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                padding: '7px 14px',
+                                borderRadius: 999,
+                                border: ppobActiveCategory === cat.id ? '1.5px solid var(--blue2)' : '1.5px solid rgba(255,255,255,0.1)',
+                                background: ppobActiveCategory === cat.id ? 'rgba(79,140,255,0.15)' : 'rgba(255,255,255,0.04)',
+                                color: ppobActiveCategory === cat.id ? 'var(--blue2)' : 'var(--text-2)',
+                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                transition: 'all 0.18s',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.85rem' }}>{cat.emoji}</span>
+                              {cat.label}
+                              {cat.id !== 'all' && <span style={{ fontSize: '0.6rem', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>{count}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    
+                    {ppobLoading && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 8 }}>
+                        {[...Array(6)].map((_, i) => (
+                          <div key={i} style={{ height: 90, borderRadius: 14, background: 'rgba(255,255,255,0.05)', animation: 'pulse 1.5s infinite' }} />
+                        ))}
+                      </div>
+                    )}
+
+                    
+                    {!ppobLoading && filteredPpob.length === 0 && (
+                      <div className="empty-state">
+                        <span className="icon">🔍</span>
+                        <p>Tidak ada produk ditemukan</p>
+                      </div>
+                    )}
+
+                    
+                    {!ppobLoading && (ppobQuery || ppobActiveCategory !== 'all' ? (
+                      ppobActiveCategory === 'game' && !ppobSelectedGame ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>Pilih Game:</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+                            {GAME_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
+                              <button
+                                key={g.id}
+                                onClick={() => setPpobSelectedGame(g)}
+                                style={{
+                                  background: `linear-gradient(135deg, ${g.color}22, ${g.color}0a)`,
+                                  border: `1.5px solid ${g.color}55`,
+                                  borderRadius: 18, padding: '20px 14px',
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                  cursor: 'pointer', gap: 8, transition: 'transform 0.15s',
+                                }}
+                                onMouseOver={e => e.currentTarget.style.transform = 'scale(1.03)'}
+                                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                              >
+                                <span style={{ fontSize: '2.2rem' }}>{g.emoji}</span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text)', textAlign: 'center', lineHeight: 1.3 }}>{g.label}</span>
+                                <span style={{ fontSize: '0.62rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                                  {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : ppobActiveCategory === 'game' && ppobSelectedGame ? (
+                        <div style={{ animation: 'slideUp 0.25s ease both' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                            <button
+                              onClick={() => setPpobSelectedGame(null)}
+                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                            >← Kembali</button>
+                            <span style={{ fontSize: '1.2rem' }}>{ppobSelectedGame.emoji}</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedGame.label}</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+                            {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedGame.brand) && p.name).map((p, i) => (
+                              <button
+                                key={p.code}
+                                onClick={() => handlePpobProductSelect(p)}
+                                style={{
+                                  background: `linear-gradient(160deg, ${ppobSelectedGame.color}18 0%, var(--card) 100%)`,
+                                  border: `1.5px solid ${ppobSelectedGame.color}33`,
+                                  borderRadius: 14, padding: '14px 12px',
+                                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                                  animationDelay: `${(i % 10) * 0.03}s`,
+                                }}
+                                onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedGame.color}
+                                onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedGame.color}33`}
+                              >
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
+                                <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
+                                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedGame.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : ppobActiveCategory === 'ewallet' ? (
+                        ppobSelectedEwallet ? (
+                          <div style={{ animation: 'slideUp 0.25s ease both' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                              <button
+                                onClick={() => setPpobSelectedEwallet(null)}
+                                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                              >← Kembali</button>
+                              <span style={{ fontSize: '1.2rem' }}>{ppobSelectedEwallet.emoji}</span>
+                              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedEwallet.label}</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+                              {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedEwallet.brand) && p.name).map((p, i) => (
+                                <button
+                                  key={p.code}
+                                  onClick={() => handlePpobProductSelect(p)}
+                                  style={{
+                                    background: `linear-gradient(160deg, ${ppobSelectedEwallet.color}18 0%, var(--card) 100%)`,
+                                    border: `1.5px solid ${ppobSelectedEwallet.color}33`,
+                                    borderRadius: 14, padding: '14px 12px',
+                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                                    animationDelay: `${(i % 10) * 0.03}s`,
+                                  }}
+                                  onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedEwallet.color}
+                                  onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedEwallet.color}33`}
+                                >
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
+                                  <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
+                                  <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedEwallet.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+                            {EWALLET_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
+                              <button key={g.id} onClick={() => setPpobSelectedEwallet(g)}
+                                style={{ background: 'linear-gradient(135deg, ' + g.color + '22, ' + g.color + '0a)', border: '1.5px solid ' + g.color + '55', borderRadius: 16, padding: '18px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: 8 }}>
+                                <span style={{ fontSize: '2rem' }}>{g.emoji}</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)' }}>{g.label}</span>
+                                <span style={{ fontSize: '0.6rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk</span>
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      ) : ppobActiveCategory === 'pulsa' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {ppobSelectedPulsaOperator ? (
+                            <div style={{ animation: 'slideUp 0.25s ease both' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                                <button
+                                  onClick={() => setPpobSelectedPulsaOperator(null)}
+                                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                                >← Kembali</button>
+                                <span style={{ fontSize: '1.2rem' }}>{ppobSelectedPulsaOperator.emoji}</span>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedPulsaOperator.label}</span>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+                                {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedPulsaOperator.brand) && p.name).map((p, i) => (
+                                  <button
+                                    key={p.code}
+                                    onClick={() => handlePpobProductSelect(p)}
+                                    style={{
+                                      background: `linear-gradient(160deg, ${ppobSelectedPulsaOperator.color}18 0%, var(--card) 100%)`,
+                                      border: `1.5px solid ${ppobSelectedPulsaOperator.color}33`,
+                                      borderRadius: 14, padding: '14px 12px',
+                                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                                      animationDelay: `${(i % 10) * 0.03}s`,
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedPulsaOperator.color}
+                                    onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedPulsaOperator.color}33`}
+                                  >
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
+                                    <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
+                                    <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedPulsaOperator.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>Pilih Operator:</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+                          {PULSA_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
+                            <button key={g.id} onClick={() => setPpobSelectedPulsaOperator(g)}
+                              style={{ background: 'linear-gradient(135deg, ' + g.color + '22, ' + g.color + '0a)', border: '1.5px solid ' + g.color + '55', borderRadius: 16, padding: '18px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: 8 }}>
+                              <span style={{ fontSize: '2rem' }}>{g.emoji}</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)' }}>{g.label}</span>
+                              <span style={{ fontSize: '0.6rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk</span>
+                            </button>
+                          ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+                        {filteredPpob.map((p, i) => (
+                          <button key={p.code} onClick={() => handlePpobProductSelect(p)}
+                            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', cursor: 'pointer', textAlign: 'left', transition: 'all 0.18s', borderLeft: '3px solid var(--blue2)' }}
+                            onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--blue2)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(79,140,255,0.12)'; }}
+                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderLeft = '3px solid var(--blue2)'; }}>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5, background: 'rgba(79,140,255,0.1)', padding: '2px 7px', borderRadius: 5 }}>{p.brand}</div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8, lineHeight: 1.35, flex: 1 }}>{p.name}</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
+                          </button>
+                        ))}
+                      </div>)
+                    ) : (
+                      /* Grouped by category */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                        {groupedPpob.map(group => (
+                          <div key={group.info.id}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                              paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.07)'
+                            }}>
+                              <span style={{ fontSize: '1.05rem' }}>{group.info.emoji}</span>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>{group.info.label}</span>
+                              <span style={{ fontSize: '0.62rem', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginLeft: 2 }}>{group.items.length} produk</span>
+                              <button
+                                onClick={() => { setPpobActiveCategory(group.info.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
+                                style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--blue2)', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                              >
+                                Lihat Semua →
+                              </button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 9 }}>
+                              {group.items.slice(0, 4).map((p, i) => (
+                                <button
+                                  key={p.code}
+                                  onClick={() => handlePpobProductSelect(p)}
+                                  style={{
+                                    background: 'var(--card)', border: '1px solid var(--border)',
+                                    borderLeft: `3px solid ${group.info.emoji === '📱' ? '#0057a8' : group.info.emoji === '⚡' ? '#f5a623' : group.info.emoji === '🏥' ? '#00aa5b' : group.info.emoji === '💧' ? '#118eea' : 'var(--blue2)'}`,
+                                    borderRadius: 14, padding: '14px 12px',
+                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                    cursor: 'pointer', textAlign: 'left',
+                                    transition: 'transform 0.15s, border-color 0.15s, box-shadow 0.15s',
+                                  }}
+                                  onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)'; }}
+                                  onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                                >
+                                  <div style={{ fontSize: '0.68rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5, background: 'rgba(79,140,255,0.1)', padding: '2px 6px', borderRadius: 5 }}>{p.brand}</div>
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8, lineHeight: 1.35, flex: 1 }}>{p.name}</div>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
+                                </button>
+                              ))}
+                            </div>
+                            {group.items.length > 4 && (
+                              <button
+                                onClick={() => { setPpobActiveCategory(group.info.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
+                                style={{
+                                  width: '100%', marginTop: 9, padding: '10px',
+                                  borderRadius: 12, border: '1px dashed rgba(255,255,255,0.12)',
+                                  background: 'rgba(255,255,255,0.02)', color: 'var(--text-3)',
+                                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                  transition: 'all 0.15s',
+                                }}
+                              >
+                                +{group.items.length - 4} produk lainnya
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+
+            
+            {ppobStep === 'input' && ppobSelectedProduct && (() => {
+              const inputCfg = getPpobInputConfig(ppobSelectedProduct);
+              return (
+                <div style={{ animation: 'slideUp 0.3s var(--ease-out) both' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                    <button
+                      onClick={() => {
+                        ppobRequestIdRef.current++;
+                        setPpobProcessing(false);
+                        setPpobSelectedProduct(null);
+                        setPpobCustomerId('');
+                        setPpobServerId('');
+                        setPpobInquiry(null);
+                        setPpobStep('list');
+                      }}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                    >
+                      ← Kembali
+                    </button>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>Detail Produk</div>
+                  </div>
+
+                  
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(79,140,255,0.12) 0%, rgba(0,212,255,0.06) 100%)',
+                    border: '1px solid rgba(79,140,255,0.25)', borderRadius: 18,
+                    padding: '18px 16px', marginBottom: 20,
+                    display: 'flex', flexDirection: 'column', gap: 8,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text)', marginBottom: 3, lineHeight: 1.3 }}>{ppobSelectedProduct.name}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'capitalize' }}>{ppobSelectedProduct.brand} · {ppobSelectedProduct.category}</div>
+                      </div>
+                      <div style={{ background: 'rgba(79,140,255,0.15)', border: '1px solid rgba(79,140,255,0.3)', borderRadius: 10, padding: '6px 12px', textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
+                        <div style={{ fontSize: '0.56rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Harga</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</div>
+                      </div>
+                    </div>
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '2px 0' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: balance >= ppobSelectedProduct.price ? 'var(--green)' : 'var(--red)' }} />
+                      <span style={{ fontSize: '0.68rem', color: balance >= ppobSelectedProduct.price ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                        {balance >= ppobSelectedProduct.price ? `Saldo cukup (${fmt(balance)})` : `Saldo kurang — butuh ${fmt(ppobSelectedProduct.price - balance)} lagi`}
+                      </span>
+                    </div>
+                  </div>
+
+                  
+                  <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '18px 16px', marginBottom: 14 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Masukkan Data Pembeli</div>
+                    <div className="input-field" style={{ marginBottom: inputCfg.needsServer ? 12 : 0 }}>
+                      <label>{inputCfg.label}</label>
+                      <input
+                        type="text"
+                        value={ppobCustomerId}
+                        placeholder={inputCfg.placeholder}
+                        onChange={e => setPpobCustomerId(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && ppobCustomerId.trim() && (!inputCfg.needsServer || ppobServerId.trim()) && handlePpobInquiry()}
+                        autoFocus
+                        style={{ fontSize: '1rem', fontFamily: 'var(--font-mono)' }}
+                      />
+                    </div>
+                    {inputCfg.needsServer && (
+                      <div className="input-field" style={{ marginBottom: 0 }}>
+                        <label>{inputCfg.serverLabel}</label>
+                        <input
+                          type="text"
+                          value={ppobServerId}
+                          placeholder={inputCfg.serverPlaceholder}
+                          onChange={e => setPpobServerId(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && ppobCustomerId.trim() && ppobServerId.trim() && handlePpobInquiry()}
+                          style={{ fontSize: '1rem', fontFamily: 'var(--font-mono)' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: '100%', height: 52, borderRadius: 'var(--r-full)', fontWeight: 800, fontSize: '0.95rem' }}
+                    onClick={handlePpobInquiry}
+                    disabled={!ppobCustomerId.trim() || (inputCfg.needsServer && !ppobServerId.trim()) || ppobProcessing}
+                  >
+                    {ppobProcessing ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memeriksa...</> : '🔍 Cek & Lanjutkan'}
+                  </button>
+                </div>
+              );
+            })()}
+
+            
+            {ppobStep === 'confirm' && ppobSelectedProduct && (
+              <div style={{ animation: 'slideUp 0.3s var(--ease-out) both' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                  <button
+                    onClick={() => { setPpobProcessing(false); setPpobStep('input'); }}
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    ← Kembali
+                  </button>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>Konfirmasi Pembelian</div>
+                </div>
+
+                
+                <div style={{
+                  background: 'rgba(0,232,122,0.06)', border: '1px solid rgba(0,232,122,0.2)',
+                  borderRadius: 18, padding: '18px 16px', marginBottom: 14
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', flexShrink: 0 }}>
+                      <IconCheck />
+                    </div>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--green)', fontWeight: 800 }}>Data ditemukan</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {ppobInquiry?.customer_name && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Nama</span>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800 }}>{ppobInquiry.customer_name}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>ID</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{ppobCustomerId}{ppobServerId ? ` (${ppobServerId})` : ''}</span>
+                    </div>
+                    {ppobInquiry?.period && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Periode</span>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800 }}>{ppobInquiry.period}</span>
+                      </div>
+                    )}
+                    {ppobInquiry?.bill_amount && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Tagihan</span>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--amber)', fontWeight: 800 }}>{fmt(ppobInquiry.bill_amount)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px', marginBottom: 14 }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Ringkasan Pembayaran</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-2)', flex: 1, marginRight: 10 }}>{ppobSelectedProduct.name}</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{fmt(ppobSelectedProduct.price)}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '12px 0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text)' }}>Total Bayar</span>
+                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</span>
+                  </div>
+                  <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>Saldo setelah bayar</span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: balance - ppobSelectedProduct.price >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--font-mono)' }}>{fmt(Math.max(0, balance - ppobSelectedProduct.price))}</span>
+                  </div>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', height: 54, borderRadius: 'var(--r-full)', fontWeight: 800, fontSize: '0.95rem', marginBottom: 10 }}
+                  onClick={handlePpobPayment}
+                  disabled={ppobProcessing || balance < ppobSelectedProduct.price}
+                >
+                  {ppobProcessing ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memproses...</> : `✅ Bayar ${fmt(ppobSelectedProduct.price)}`}
+                </button>
+                {balance < ppobSelectedProduct.price && (
+                  <button className="btn btn-secondary" style={{ width: '100%', borderRadius: 'var(--r-full)', height: 44 }} onClick={() => { setPpobStep('list'); setTab('deposit'); }}>
+                    💳 Top Up Saldo Dulu
+                  </button>
+                )}
+              </div>
+            )}
+
+            
+            {ppobStep === 'success' && ppobSelectedProduct && (
+              <div style={{ animation: 'slideUp 0.3s var(--ease-out) both', textAlign: 'center', paddingTop: 24 }}>
+                <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 20px' }}>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,232,122,0.15)', border: '2px solid rgba(0,232,122,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'popIn 0.5s var(--ease-out)' }}>
+                    <svg width="32" height="32" fill="none" stroke="var(--green)" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  </div>
+                  <div style={{ position: 'absolute', inset: -6, borderRadius: '50%', border: '1.5px solid rgba(0,232,122,0.2)', animation: 'pulse 1.5s infinite' }} />
+                </div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--green)', marginBottom: 6 }}>Transaksi Berhasil!</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', marginBottom: 24 }}>Pembayaran telah diproses oleh sistem</div>
+
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '18px 16px', marginBottom: 20, textAlign: 'left' }}>
+                  {ppobSuccessData?.ref_id && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Ref. ID</span>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{ppobSuccessData.ref_id}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Produk</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700, textAlign: 'right', maxWidth: '65%' }}>{ppobSelectedProduct.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>ID Pelanggan</span>
+                    <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{ppobCustomerId}{ppobServerId ? ` (${ppobServerId})` : ''}</span>
+                  </div>
+                  {(ppobSuccessData?.customer_name || ppobInquiry?.customer_name) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Nama</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700 }}>{ppobSuccessData?.customer_name || ppobInquiry?.customer_name}</span>
+                    </div>
+                  )}
+                  {ppobSuccessData?.sn && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Serial Number</span>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--cyan)' }}>{ppobSuccessData.sn}</span>
+                    </div>
+                  )}
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0 12px' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text)' }}>Total Dibayar</span>
+                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ borderRadius: 14, height: 48 }}
+                    onClick={() => { setPpobProcessing(false); setPpobStep('input'); setPpobCustomerId(''); setPpobServerId(''); setPpobInquiry(null); setPpobSuccessData(null); }}
+                  >
+                    🔄 Beli Lagi
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ borderRadius: 14, height: 48 }}
+                    onClick={() => { ppobRequestIdRef.current++; setPpobProcessing(false); setPpobStep('list'); setPpobSelectedProduct(null); setPpobCustomerId(''); setPpobServerId(''); setPpobInquiry(null); setPpobSuccessData(null); }}
+                  >
+                    🏠 Ke Beranda
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'deposit' && (
+          <div className="deposit-wrap" style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+            <div className="section-header-block">
+              <h2>Top Up Saldo</h2>
+            </div>
+            {!qrisData ? (
+              <div className="deposit-card">
+                <div className="input-field">
+                  <label>Nominal Deposit</label>
+                  <input type="number" value={depositAmount} placeholder="Contoh: 10000" onChange={e => setDepositAmount(e.target.value)} />
+                </div>
+                <div className="deposit-amounts">
+                  {[2000, 5000, 10000, 20000, 50000, 100000].map(amt => (
+                    <button key={amt} className={`amount-chip ${depositAmount == amt ? 'active' : ''}`} onClick={() => setDepositAmount(String(amt))}>
+                      {fmt(amt).replace('Rp ', 'Rp')}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn btn-primary" onClick={createQris} disabled={!depositAmount || Number(depositAmount) < 2000 || creatingQris} style={{ marginTop: 12, borderRadius: 'var(--r-full)' }}>
+                  {creatingQris ? <><LoadingSpinner style={{ width: 16, height: 16 }} /> Membuat QRIS...</> : '📲 Buat QRIS Pembayaran'}
+                </button>
+              </div>
+            ) : (
+              <div className="qris-topup-wrap">
+                <div className="qris-blue-card">
+                  {qrisCountdown > 0 ? (
+                    <div className="qris-expiry-bar">
+                      <div className="qris-expiry-info">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M12 6v6l4 2" /></svg>
+                        <span>Batas Waktu Bayar</span>
+                      </div>
+                      <div className="qris-expiry-digits">
+                        <span className="qris-digit-box">{String(Math.floor(qrisCountdown / 60)).padStart(2, '0')[0]}</span>
+                        <span className="qris-digit-box">{String(Math.floor(qrisCountdown / 60)).padStart(2, '0')[1]}</span>
+                        <span className="qris-digit-sep">:</span>
+                        <span className="qris-digit-box">{String(qrisCountdown % 60).padStart(2, '0')[0]}</span>
+                        <span className="qris-digit-box">{String(qrisCountdown % 60).padStart(2, '0')[1]}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="qris-expiry-bar qris-expiry-expired">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M15 9l-6 6M9 9l6 6" /></svg>
+                      <span>Waktu Pembayaran Habis</span>
+                    </div>
+                  )}
+                  <div className="qris-blue-header-row">
+                    <span style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 6, padding: '2px 8px', fontWeight: 900, fontSize: '0.9rem' }}>QRIS</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.7rem', opacity: 0.9 }}>GPN ✦</span>
+                  </div>
+                  <div className="qris-blue-title">CINDIGITAL GROUP</div>
+                  <div className="qris-blue-nmid">NMID: ID2025429755718</div>
+                  <div className="qris-blue-qr-wrap">
+                    <img src={qrisData.qr_image || qrisData.qr_url} alt="QRIS" onError={e => { e.target.style.opacity = '0.2'; }} />
+                  </div>
+                  <div className="qris-blue-total">
+                    <span>Total Bayar</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem' }}>{qrisData.actual_amount.toLocaleString('id-ID')} IDR</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, padding: '12px 18px 0' }}>
+                    <button className="btn qris-btn-cancel" onClick={async () => {
+                      const depId = qrisData.id; const depAmt = qrisData.actual_amount || 0;
+                      setQrisData(null); setDepositAmount('');
+                      if (depId) { await api('deposit_cancel', { deposit_id: depId }); showCancelNotif(depAmt, 'Deposit telah dibatalkan'); }
+                    }}>
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      Batalkan
+                    </button>
+                    <button className="btn qris-btn-download" onClick={() => downloadQrisImage(qrisData.qr_image || qrisData.qr_url)}>
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      Unduh QRIS
+                    </button>
+                  </div>
+                  <div className="qris-scan-hint" style={{ padding: '10px 18px 14px' }}>
+                    Sistem memverifikasi pembayaran secara otomatis
+                  </div>
+                </div>
+
+                <div className="qris-summary-card">
+                  <div className="qris-summary-row">
+                    <span>Saldo Masuk</span>
+                    <span style={{ color: 'var(--green)', fontWeight: 900 }}>{qrisData.credit_amount.toLocaleString('id-ID')} IDR</span>
+                  </div>
+                  {qrisData.fee_amount > 0 && (
+                    <div className="qris-summary-row">
+                      <span>Biaya Admin</span>
+                      <span style={{ color: 'var(--amber)' }}>{qrisData.fee_amount.toLocaleString('id-ID')} IDR</span>
+                    </div>
+                  )}
+                  <div className="qris-summary-row qris-summary-total">
+                    <span>Total Bayar</span>
+                    <span>{qrisData.actual_amount.toLocaleString('id-ID')} IDR</span>
+                  </div>
+                  <button className="btn btn-primary qris-cek-btn" onClick={checkQrisPayment} disabled={busy}>
+                    {busy ? <LoadingSpinner style={{ width: 15, height: 15 }} /> : (
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    )}
+                    {busy ? 'Mengecek...' : 'Cek Pembayaran'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'activity' && (
+          <div className="activity-wrap" style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+            <div className="section-header-block">
+              <h2>Riwayat Aktivitas</h2>
+            </div>
+            {historyItems.length === 0 ? (
+              <div className="empty-state" style={{ paddingTop: 60 }}>
+                <span className="icon" style={{ fontSize: '3rem' }}>📋</span>
+                <p style={{ marginTop: 12, fontWeight: 600 }}>Belum ada transaksi</p>
+                <p style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: 4 }}>Transaksi kamu akan muncul di sini</p>
+              </div>
+            ) : (
+              <div className="history-list">
+                {historyItems.map((item, i) => {
+                  const isCompleted = item.status === 'completed' || item.status === 'success' || item.status === 'paid';
+                  const isCanceled = item.status === 'canceled' || item.status === 'cancel';
+                  const statusClass = isCompleted ? 'completed' : isCanceled ? 'canceled' : 'pending';
+                  const statusLabel = isCompleted ? 'Berhasil' : isCanceled ? 'Batal' : 'Pending';
+
+                  return (
+                    <div key={i} className="history-card" style={{ animationDelay: `${(i % 15) * 0.03}s` }} onClick={() => setSelectedHistoryItem(item)}>
+                      <div className="history-icon">
+                        {item.itemType === 'order' ? <SvgProduct /> : <SvgTopUp />}
+                      </div>
+                      <div className="history-info">
+                        <div className="history-title">
+                          {item.itemType === 'order' ? `${item.service_name || 'Virtual Number'} - ${item.operator || 'Any'}` : `Deposit Saldo QRIS`}
+                        </div>
+                        <div className="history-date">
+                          {formatReceiptDate(item.timestamp)}
+                        </div>
+                      </div>
+                      <div className={`history-status ${statusClass}`}>
+                        <div className="history-amt">
+                          {item.itemType === 'deposit' ? '+' : '-'}{fmt(item.itemType === 'deposit' ? (item.diterima || item.base_amount || item.amount || item.price) : (item.amount || item.price))}
+                        </div>
+                        {item.itemType === 'deposit' && (item.total || item.amount) > (item.diterima || item.base_amount) && (
+                          <div className="history-admin-fee">Bayar: {(item.total || item.amount || 0).toLocaleString('id-ID')} IDR</div>
+                        )}
+                        <span>{statusLabel}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'profile' && (
+          <div className="profile-wrap" style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+              borderRadius: 20,
+              padding: '28px 20px 24px',
+              margin: '0 0 20px',
+              textAlign: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: 72, height: 72,
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.2)',
+                border: '3px solid rgba(255,255,255,0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '2rem', fontWeight: 900, color: '#fff',
+                margin: '0 auto 12px',
+                backdropFilter: 'blur(4px)',
+              }}>
+                {username ? username[0].toUpperCase() : user?.email?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+                {username || 'Pengguna'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>
+                {user?.email}
+              </div>
+            </div>
+
+            <div className="profile-section">
+              <div className="profile-section-title">
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <SvgProfile />
+                </span> Info Akun
+              </div>
+              <div className="profile-section-body">
+                <div className="input-field">
+                  <label>Username</label>
+                  <input type="text" value={username} placeholder="Nama unik tampilan" onChange={e => setUsername(e.target.value.replace(/\s/g, ''))} maxLength={30} />
+                </div>
+                <div className="input-field">
+                  <label>Email</label>
+                  <input type="email" value={user?.email || ''} disabled style={{ opacity: 0.45, cursor: 'not-allowed' }} />
+                </div>
+                <button className="btn btn-primary" onClick={saveProfile} disabled={savingProfile} style={{ borderRadius: 'var(--r-full)', marginTop: 8 }}>
+                  {savingProfile ? <><LoadingSpinner style={{ width: 16, height: 16 }} /> Menyimpan...</> : '💾 Simpan Profil'}
+                </button>
+              </div>
+            </div>
+
+            <div className="profile-section">
+              <div className="profile-section-title">
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="18"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </span> {hasPassword ? 'Ganti Password' : 'Atur Password'}
+              </div>
+              <div className="profile-section-body">
+                {hasPassword && (
+                  <div className="input-field">
+                    <label>Password Saat Ini</label>
+                    <div className="input-icon-wrap">
+                      <input type={showCurPass ? 'text' : 'password'} value={curPass} placeholder="••••••••" onChange={e => setCurPass(e.target.value)} />
+                      <EyeToggle show={showCurPass} onToggle={() => setShowCurPass(v => !v)} />
+                    </div>
+                  </div>
+                )}
+                <div className="input-field">
+                  <label>Password Baru</label>
+                  <div className="input-icon-wrap">
+                    <input type={showNewPass ? 'text' : 'password'} value={profileNewPass} placeholder="Min. 6 karakter" onChange={e => setProfileNewPass(e.target.value)} />
+                    <EyeToggle show={showNewPass} onToggle={() => setShowNewPass(v => !v)} />
+                  </div>
+                </div>
+                <div className="input-field">
+                  <label>Konfirmasi Password</label>
+                  <div className="input-icon-wrap">
+                    <input type={showProfileConfPass ? 'text' : 'password'} value={profileConfirmPass} placeholder="Ulangi password baru" onChange={e => setProfileConfirmPass(e.target.value)} />
+                    <EyeToggle show={showProfileConfPass} onToggle={() => setShowProfileConfPass(v => !v)} />
+                  </div>
+                </div>
+                {profileConfirmPass && profileNewPass !== profileConfirmPass && <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginBottom: 12 }}>❌ Password tidak cocok</p>}
+                {profileConfirmPass && profileNewPass === profileConfirmPass && profileNewPass.length >= 6 && <p style={{ fontSize: '0.78rem', color: 'var(--green)', marginBottom: 12 }}>✅ Password cocok</p>}
+                <button className="btn btn-primary" onClick={savePassword} disabled={savingPass || profileNewPass.length < 6 || profileNewPass !== profileConfirmPass || (hasPassword && !curPass)} style={{ borderRadius: 'var(--r-full)', marginTop: 8 }}>
+                  {savingPass ? <><LoadingSpinner style={{ width: 16, height: 16 }} /> Menyimpan...</> : '🔐 Simpan Password'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '0 0 8px' }}>
+              <button className="btn btn-danger" onClick={logout} style={{ marginBottom: 0, borderRadius: 'var(--r-full)', width: '100%' }}>🚪 Keluar dari Akun</button>
+            </div>
+            <div style={{ height: 24 }} />
+          </div>
+        )}
+      </div>
+
+      <nav className="bottom-nav">
+        <button className={`nav-item ${tab === 'virtual' ? 'active' : ''}`} onClick={() => { setTab('virtual'); setOrder(null); }}>
+          <div className="nav-icon-wrap"><SvgProduct /></div>
+          <span>Produk</span>
+        </button>
+        <button className={`nav-item ${tab === 'ppob' ? 'active' : ''}`} onClick={() => setTab('ppob')}>
+          <div className="nav-icon-wrap"><SvgPPOB /></div>
+          <span>PPOB</span>
+        </button>
+        <button className={`nav-item ${tab === 'deposit' ? 'active' : ''}`} onClick={() => setTab('deposit')}>
+          <div className="nav-icon-wrap"><SvgTopUp /></div>
+          <span>Top Up</span>
+        </button>
+        <button className={`nav-item ${tab === 'profile' ? 'active' : ''}`} onClick={() => setTab('profile')}>
+          <div className="nav-icon-wrap"><SvgProfile /></div>
+          <span>Profil</span>
+        </button>
+      </nav>
+
+      
+      <div className={`sheet-overlay ${showSheet ? 'open' : ''}`} onClick={() => setShowSheet(false)} />
+
+      
+      <div className={`bottom-sheet ${showSheet ? 'open' : ''}`}>
+        <div className="sheet-handle" />
+        <div className="sheet-header">
+          {selectedSvc && (
+            <div className="sheet-svc-row">
+              <div className="sheet-svc-icon">
+                <img src={selectedSvc.service_img} alt={selectedSvc.service_name} onError={e => { e.target.style.display = 'none'; }} />
+              </div>
+              <div>
+                <div className="sheet-svc-name">{selectedSvc.service_name}</div>
+                <div className="sheet-title">Pilih Negara & Server</div>
+              </div>
+            </div>
+          )}
+          <div className="sheet-search">
+            <input
+              value={countryQuery}
+              placeholder="Cari negara..."
+              onChange={e => setCountryQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="sheet-body">
+          {loadingCountries ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+              <LoadingSpinner />
+            </div>
+          ) : filteredCountries.length === 0 ? (
+            <div className="empty-state">
+              <span className="icon">🌍</span>
+              <p>{countryQuery ? 'Negara tidak ditemukan' : 'Stok tidak tersedia saat ini'}</p>
+            </div>
+          ) : (
+            filteredCountries.map(country => (
+              <div key={country.number_id} className="country-wrapper">
+                <div
+                  className={`country-item ${expandedCountry === country.number_id ? 'selected' : ''}`}
+                  onClick={() => setExpandedCountry(expandedCountry === country.number_id ? null : country.number_id)}
+                >
+                  <span className="country-flag"><FlagImg name={country.name} size={26} /></span>
+                  <span className="country-name">{country.name}</span>
+                  <div className="country-right">
+                    <div className="country-price">{fmt(country.available[0]?.price)}</div>
+                    <div className={`country-stock ${country.stock_total > 0 ? 'text-green' : 'text-red'}`}>
+                      {country.stock_total} stok
+                    </div>
+                  </div>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"
+                    style={{ transform: expandedCountry === country.number_id ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.22s', flexShrink: 0, marginLeft: 4 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {expandedCountry === country.number_id && (
+                  <div className="provider-list">
+                    {country.available.map(provider => (
+                      <div key={provider.provider_id} className="provider-item">
+                        <div className="provider-info">
+                          <span style={{ fontSize: '1.1rem' }}>📡</span>
+                          <div>
+                            <div className="provider-id">Server {provider.provider_id}</div>
+                            <div className="provider-price">{fmt(provider.price)}</div>
+                          </div>
+                        </div>
+                        <button
+                          className="btn-order"
+                          disabled={!!orderingProv}
+                          onClick={() => handleOrderClick(country, provider)}
+                        >
+                          {orderingProv === provider.provider_id
+                            ? <LoadingSpinner style={{ width: 14, height: 14 }} />
+                            : 'Beli'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          <div style={{ height: 16 }} />
+        </div>
+      </div>
+
+      
+      <div className={`modal-overlay ${showOperatorModal ? 'open' : ''}`}>
+        <div className="modal-content popIn" style={{ maxHeight: '75vh', overflowY: 'auto', textAlign: 'left' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 900, marginBottom: 4 }}>
+            Pilih Operator
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', fontWeight: 600, marginBottom: 16 }}>
+            {selectedOrderContext?.country?.name}
+            {selectedOrderContext?.provider?.provider_id ? ` · Server ${selectedOrderContext.provider.provider_id}` : ''}
+            {selectedOrderContext?.provider?.price ? ` · ${fmt(selectedOrderContext.provider.price)}` : ''}
+          </div>
+          {loadingOperators ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+              <LoadingSpinner />
+            </div>
+          ) : (
+            <div className="operator-grid">
+              {operators.map(op => (
+                <button key={op.id} className="operator-card" onClick={() => confirmOrder(op)}>
+                  <div className="operator-icon-placeholder">
+                    <span style={{ fontSize: '1.3rem' }}>📶</span>
+                  </div>
+                  <span>{op.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            className="btn btn-secondary"
+            style={{ marginTop: 18, width: '100%', borderRadius: 'var(--r-full)', marginBottom: 0 }}
+            onClick={() => setShowOperatorModal(false)}
+          >
+            Batal
+          </button>
+        </div>
+      </div>
+
+      {selectedHistoryItem && (
+        <div className="receipt-overlay">
+          <div className="receipt-nav">
+            <div className="receipt-nav-back" onClick={() => setSelectedHistoryItem(null)}>
+              <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              Kembali
+            </div>
+            <div style={{ flex: 1, textAlign: 'center', marginLeft: '-24px', fontWeight: 800 }}>Payment</div>
+          </div>
+
+          <div className={`receipt-header-bg ${selectedHistoryItem.status === 'completed' || selectedHistoryItem.status === 'success' || selectedHistoryItem.status === 'paid' ? 'completed' : selectedHistoryItem.status === 'canceled' || selectedHistoryItem.status === 'cancel' ? 'canceled' : 'pending'}`}>
+            <div className="receipt-icon-circle">
+              {selectedHistoryItem.status === 'completed' || selectedHistoryItem.status === 'success' || selectedHistoryItem.status === 'paid' ? <IconCheck /> : selectedHistoryItem.status === 'canceled' || selectedHistoryItem.status === 'cancel' ? <IconCross /> : <IconClock />}
+            </div>
+            <div className="receipt-status-text">
+              {selectedHistoryItem.status === 'completed' || selectedHistoryItem.status === 'success' || selectedHistoryItem.status === 'paid' ? 'Transaksi Berhasil' : selectedHistoryItem.status === 'canceled' || selectedHistoryItem.status === 'cancel' ? 'Transaksi Dibatalkan' : 'Transaksi Pending'}
+            </div>
+            <div className="receipt-date-text">{formatReceiptDate(selectedHistoryItem.timestamp)}</div>
+          </div>
+
+          <div className="receipt-card">
+            <div className="receipt-total-label">Total Transaksi</div>
+            <div className="receipt-total-value">{(selectedHistoryItem.total || selectedHistoryItem.amount || selectedHistoryItem.price || 0).toLocaleString('id-ID')} IDR</div>
+
+            {selectedHistoryItem.itemType === 'deposit' && (selectedHistoryItem.diterima || selectedHistoryItem.base_amount) && (selectedHistoryItem.total || selectedHistoryItem.amount) > (selectedHistoryItem.diterima || selectedHistoryItem.base_amount) && (
+              <div className="receipt-saldo-badge">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                Saldo masuk&nbsp;<strong>{(selectedHistoryItem.diterima || selectedHistoryItem.base_amount || 0).toLocaleString('id-ID')} IDR</strong>
+              </div>
+            )}
+
+            <div className="receipt-box">
+              <div className="receipt-box-icon">
+                {selectedHistoryItem.itemType === 'order' ? <SvgProduct /> : <SvgTopUp />}
+              </div>
+              <div className="receipt-box-info">
+                <div className="receipt-box-title">{selectedHistoryItem.itemType === 'order' ? selectedHistoryItem.service_name : 'Deposit Saldo'}</div>
+                <div className="receipt-box-sub">{selectedHistoryItem.itemType === 'order' ? `${selectedHistoryItem.country || ''} / ${selectedHistoryItem.operator || 'Any'}` : 'QRIS / DANA'}</div>
+              </div>
+            </div>
+
+            <div className="receipt-row receipt-row-id">
+              <div className="receipt-row-label">ID Reff</div>
+              <div className="receipt-id-wrap">
+                <span className="receipt-id-text">{selectedHistoryItem.id}</span>
+                <button className="receipt-copy-btn" onClick={() => { navigator.clipboard.writeText(selectedHistoryItem.id); showToast('success', 'Tersalin', 'ID berhasil disalin'); }}>
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  Salin
+                </button>
+              </div>
+            </div>
+            <div className="receipt-row">
+              <div className="receipt-row-label">Waktu transaksi</div>
+              <div className="receipt-row-value">{formatReceiptDate(selectedHistoryItem.timestamp)}</div>
+            </div>
+            {selectedHistoryItem.itemType === 'order' && selectedHistoryItem.number && (
+              <div className="receipt-row">
+                <div className="receipt-row-label">Nomor Telp</div>
+                <div className="receipt-row-value">{selectedHistoryItem.number}</div>
+              </div>
+            )}
+
+            {selectedHistoryItem.itemType === 'deposit' && (selectedHistoryItem.status === 'pending' || selectedHistoryItem.status === 'waiting') && selectedHistoryItem.qr_image && (
+              <div className="qris-blue-card">
+                {depositCountdown > 0 && (
+                  <div className="qris-expiry-bar">
+                    <div className="qris-expiry-info">
+                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M12 6v6l4 2" /></svg>
+                      <span>Batas Waktu Bayar</span>
+                    </div>
+                    <div className="qris-expiry-digits">
+                      <span className="qris-digit-box">{String(Math.floor(depositCountdown / 60)).padStart(2, '0')[0]}</span>
+                      <span className="qris-digit-box">{String(Math.floor(depositCountdown / 60)).padStart(2, '0')[1]}</span>
+                      <span className="qris-digit-sep">:</span>
+                      <span className="qris-digit-box">{String(depositCountdown % 60).padStart(2, '0')[0]}</span>
+                      <span className="qris-digit-box">{String(depositCountdown % 60).padStart(2, '0')[1]}</span>
+                    </div>
+                  </div>
+                )}
+                {depositCountdown === 0 && (
+                  <div className="qris-expiry-bar qris-expiry-expired">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M15 9l-6 6M9 9l6 6" /></svg>
+                    <span>Waktu Pembayaran Habis</span>
+                  </div>
+                )}
+                <div className="qris-blue-header-row">
+                  <div style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 6, padding: '2px 8px', fontSize: '0.9rem' }}>QRIS</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 800, opacity: 0.9, letterSpacing: '0.05em' }}>GPN ✦</div>
+                </div>
+                <div className="qris-blue-title">CINDIGITAL GROUP</div>
+                <div className="qris-blue-nmid">NMID: ID2025429755718</div>
+                <div className="qris-blue-qr-wrap">
+                  <img src={selectedHistoryItem.qr_image} alt="QRIS" />
+                </div>
+                <div className="qris-blue-total">
+                  <span>Total Bayar</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.05rem' }}>{(selectedHistoryItem.total || selectedHistoryItem.amount || 0).toLocaleString('id-ID')} IDR</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, padding: '12px 18px 0' }}>
+                  <button className="btn qris-btn-cancel" onClick={() => { const depId = selectedHistoryItem.id; const depAmt = selectedHistoryItem.total || selectedHistoryItem.amount || 0; setSelectedHistoryItem(null); cancelHistoryDeposit(depId, depAmt); }} disabled={busy}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    Batalkan
+                  </button>
+                  <button className="btn qris-btn-download" onClick={() => downloadQrisImage(selectedHistoryItem.qr_image)}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Unduh QRIS
+                  </button>
+                </div>
+                <div className="qris-scan-hint" style={{ padding: '10px 18px 16px' }}>Sistem memverifikasi pembayaran secara otomatis</div>
+              </div>
+            )}
+
+            <div className="receipt-divider"></div>
+
+            <div className="receipt-row">
+              <div className="receipt-row-label">Nominal</div>
+              <div className="receipt-row-value">{(selectedHistoryItem.diterima || selectedHistoryItem.base_amount || selectedHistoryItem.price || 0).toLocaleString('id-ID')} IDR</div>
+            </div>
+
+            {selectedHistoryItem.itemType === 'deposit' && (
+              <div className="receipt-row">
+                <div className="receipt-row-label">Biaya Admin</div>
+                <div className="receipt-row-value" style={{ color: (selectedHistoryItem.fee !== undefined ? selectedHistoryItem.fee : ((selectedHistoryItem.total || selectedHistoryItem.amount || 0) - (selectedHistoryItem.diterima || selectedHistoryItem.base_amount || 0))) > 0 ? 'var(--amber)' : 'var(--text)' }}>
+                  {(selectedHistoryItem.fee !== undefined ? selectedHistoryItem.fee : ((selectedHistoryItem.total || selectedHistoryItem.amount || 0) - (selectedHistoryItem.diterima || selectedHistoryItem.base_amount || 0))).toLocaleString('id-ID')} IDR
+                </div>
+              </div>
+            )}
+
+            <div className="receipt-row" style={{ color: 'var(--blue2)', fontWeight: 800 }}>
+              <div className="receipt-row-label" style={{ color: 'var(--blue2)' }}>Total Dibayar</div>
+              <div className="receipt-row-value">{(selectedHistoryItem.total || selectedHistoryItem.amount || selectedHistoryItem.price || 0).toLocaleString('id-ID')} IDR</div>
+            </div>
+
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
