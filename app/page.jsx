@@ -215,7 +215,6 @@ export default function Page() {
   const [countdown, setCountdown] = useState(0);
   const [otpMode, setOtpMode] = useState('register');
   const timerRef = useRef(null);
-  const ppobRequestIdRef = useRef(0);
 
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
@@ -288,18 +287,7 @@ export default function Page() {
   const [ppobError, setPpobError] = useState('');
   const [ppobQuery, setPpobQuery] = useState('');
   const [ppobLoading, setPpobLoading] = useState(false);
-  const [ppobStep, setPpobStep] = useState('list');
-  const [ppobSelectedProduct, setPpobSelectedProduct] = useState(null);
-  const [ppobCustomerId, setPpobCustomerId] = useState('');
-  const [ppobServerId, setPpobServerId] = useState('');
-  const [ppobInquiry, setPpobInquiry] = useState(null);
-  const [ppobProcessing, setPpobProcessing] = useState(false);
-  const [ppobActiveCategory, setPpobActiveCategory] = useState('all');
-  const [ppobSelectedGame, setPpobSelectedGame] = useState(null);
-  const [ppobSelectedPulsaOperator, setPpobSelectedPulsaOperator] = useState(null);
-  const [ppobSelectedEwallet, setPpobSelectedEwallet] = useState(null);
-
-  const [ppobSuccessData, setPpobSuccessData] = useState(null);
+  const [ppobCategory, setPpobCategory] = useState('Semua');
 
   const [loadingSvcs, setLoadingSvcs] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -353,6 +341,7 @@ export default function Page() {
     document.documentElement.setAttribute('data-theme', n);
   };
 
+  // Simpan order aktif ke localStorage agar tidak hilang saat refresh
   useEffect(() => {
     if (order) {
       localStorage.setItem('walz_active_order', JSON.stringify(order));
@@ -608,9 +597,9 @@ export default function Page() {
     setPpobError('');
     setPpobLoading(true);
     const kodes = ['TSEL','XL','TRI','PLN','PLNPASCH','BPJS','PDAM','INDIHOME','GOPAY','OVO','DANA','MLBB','FF','PUBG','STEAM','NETFLIX','TOKEN'];
-    const results = await Promise.all(kodes.map(k => fetch(`/api/ppob/produk?kode=${k}`).then(r => r.json()).then(r => ({ data: r.data, kode: k }))));
-    const all = results.flatMap(r => Array.isArray(r.data) ? r.data.map(p => ({ ...p, _kode: r.kode })) : []);
-    const r = { success: all.length > 0, data: all.filter(p => p.status === 1).map(p => ({ code: p.code, name: p.nama_produk, brand: p.operator_produk, category: p.category_name, price: p.price, _kode: p._kode })).sort((a, b) => a.price - b.price) };
+    const results = await Promise.all(kodes.map(k => fetch(`/api/ppob/produk?kode=${k}`).then(r => r.json())));
+    const all = results.flatMap(r => Array.isArray(r.data) ? r.data : []);
+    const r = { success: all.length > 0, data: all.filter(p => p.status === 1).map(p => ({ code: p.code, name: p.nama_produk, brand: p.operator_produk, category: p.category_name, price: p.price })) };
     setPpobLoading(false);
     if (r.success && Array.isArray(r.data)) {
       setPpobItems(r.data);
@@ -619,195 +608,9 @@ export default function Page() {
     }
   };
 
-  const PPOB_CATS = [
-    { id: 'all', label: 'Semua', emoji: '⊞' },
-    { id: 'pulsa', label: 'Pulsa & Data', emoji: '📱' },
-    { id: 'pln', label: 'Listrik', emoji: '⚡' },
-    { id: 'bpjs', label: 'BPJS', emoji: '🏥' },
-    { id: 'pdam', label: 'PDAM', emoji: '💧' },
-    { id: 'internet', label: 'Internet', emoji: '🌐' },
-    { id: 'game', label: 'Game', emoji: '🎮' },
-    { id: 'ewallet', label: 'E-Wallet', emoji: '💳' },
-    { id: 'streaming', label: 'Streaming', emoji: '🎬' },
-  ];
-
-
-  const GAME_LIST = [
-    { id: 'mlbb', label: 'Mobile Legends', emoji: '⚔️', color: '#1a6bff', brand: 'MOBILE LEGEND' },
-    { id: 'ff', label: 'Free Fire', emoji: '🔥', color: '#ff4d00', brand: 'FREE FIRE' },
-    { id: 'pubg', label: 'PUBG Mobile', emoji: '🎯', color: '#f5a623', brand: 'PUBG' },
-    { id: 'steam', label: 'Steam Wallet', emoji: '🎲', color: '#4a90d9', brand: 'STEAM' },
-    { id: 'netflix', label: 'Netflix', emoji: '🎬', color: '#e50914', brand: 'NETFLIX' },
-    { id: 'token', label: 'Token & Voucher', emoji: '🎫', color: '#7c3aed', brand: 'TOKEN' },
-  ];
-
-  const EWALLET_LIST = [
-    { id: 'gopay', label: 'GoPay', emoji: '💚', color: '#00aa5b', brand: 'GOPAY' },
-    { id: 'ovo',   label: 'OVO',   emoji: '💜', color: '#4c3494', brand: 'OVO'   },
-    { id: 'dana',  label: 'DANA',  emoji: '💙', color: '#118eea', brand: 'DANA'  },
-  ];
-
-  const PULSA_LIST = [
-    { id: 'tsel', label: 'Telkomsel', emoji: '🔴', color: '#ff0000', brand: 'TELKOMSEL' },
-    { id: 'xl',   label: 'XL / AXIS', emoji: '🔵', color: '#0057a8', brand: 'XL'       },
-    { id: 'tri',  label: 'Tri (3)',   emoji: '🟡', color: '#f5a623', brand: 'TRI'      },
-  ];
-
-  const getPpobCatId = (p) => {
-    const brand = (p.brand || '').toUpperCase();
-    const cat = (p.category || '').toLowerCase();
-    const name = (p.name || '').toUpperCase();
-    const kode = (p._kode || '').toUpperCase();
-
-    // Gunakan kode sumber sebagai klasifikasi utama (paling akurat)
-    if (kode === 'PLN' || kode === 'PLNPASCH') return 'pln';
-    if (kode === 'BPJS') return 'bpjs';
-    if (kode === 'PDAM') return 'pdam';
-    if (kode === 'INDIHOME') return 'internet';
-    if (kode === 'GOPAY' || kode === 'OVO' || kode === 'DANA') return 'ewallet';
-    if (kode === 'MLBB' || kode === 'FF' || kode === 'PUBG' || kode === 'STEAM') return 'game';
-    if (kode === 'NETFLIX') return 'streaming';
-    if (kode === 'TSEL' || kode === 'XL' || kode === 'TRI') return 'pulsa';
-    // TOKEN kode: bisa PLN token atau voucher lain
-    if (kode === 'TOKEN') {
-      if (brand.includes('PLN') || name.includes('PLN') || name.includes('LISTRIK') ||
-          cat.includes('listrik') || cat.includes('pln') || cat.includes('token pln')) return 'pln';
-      return 'game'; // token non-PLN masuk game/voucher
-    }
-
-    // Fallback berbasis brand/category/name (untuk produk tanpa _kode)
-    // E-wallet
-    if (['GOPAY','OVO','DANA','SHOPEEPAY','LINKAJA'].some(b => brand.includes(b)) || cat.includes('wallet') || cat.includes('e-money')) return 'ewallet';
-    // Game
-    if (['MLBB','FF','PUBG','STEAM','MOBILE LEGEND','FREE FIRE'].some(b => brand.includes(b)) || cat.includes('game') || cat.includes('voucher game')) return 'game';
-    // Streaming
-    if (['NETFLIX','SPOTIFY','YOUTUBE','DISNEY'].some(b => brand.includes(b)) || cat.includes('streaming')) return 'streaming';
-    // PLN — cek brand, category, DAN nama produk agar tidak bocor ke pulsa
-    if (brand.includes('PLN') || brand.includes('POSTPAID') || brand.includes('PASCABAYAR') ||
-        brand.includes('LISTRIK') ||
-        cat.includes('pln') || cat.includes('listrik') || cat.includes('token pln') || cat.includes('pascabayar') || cat.includes('postpaid') || cat.includes('token listrik') ||
-        name.includes('PLN') || name.includes('TOKEN LISTRIK') || name.includes('PASCABAYAR') ||
-        name.includes('LISTRIK')) return 'pln';
-    // BPJS
-    if (brand.includes('BPJS') || cat.includes('bpjs')) return 'bpjs';
-    // PDAM
-    if (brand.includes('PDAM') || cat.includes('pdam') || cat.includes('air minum')) return 'pdam';
-    // Internet
-    if (brand.includes('INDIHOME') || cat.includes('indihome') || cat.includes('internet')) return 'internet';
-    // Pulsa — tambah negatif-check agar produk PLN/BPJS/PDAM tidak masuk sini
-    if ((['TSEL','TELKOMSEL','XL','TRI','INDOSAT','AXIS','SMARTFREN','IM3','SIMPATI'].some(b => brand.includes(b)) || cat.includes('pulsa') || cat.includes('paket data'))
-        && !brand.includes('PLN') && !brand.includes('BPJS') && !brand.includes('PDAM') && !brand.includes('LISTRIK')
-        && !name.includes('PLN') && !name.includes('PASCABAYAR') && !name.includes('LISTRIK')) return 'pulsa';
-    return 'other';
-  };
-
-  const getPpobInputConfig = (product) => {
-    if (!product) return { label: 'ID / Nomor', placeholder: 'Masukkan ID' };
-    const brand = (product.brand || '').toUpperCase();
-    const cat = (product.category || '').toLowerCase();
-    if (brand.includes('MLBB') || brand.includes('MOBILE LEGEND')) return { label: 'User ID', placeholder: 'Contoh: 123456789', needsServer: true, serverLabel: 'Zone ID', serverPlaceholder: 'Contoh: 2201' };
-    if (brand.includes('FF') || brand.includes('FREE FIRE')) return { label: 'User ID', placeholder: 'Masukkan User ID Free Fire' };
-    if (brand.includes('PUBG')) return { label: 'Player ID', placeholder: 'Masukkan Player ID PUBG' };
-    if (cat.includes('game') || brand.includes('STEAM')) return { label: 'User ID', placeholder: 'Masukkan User ID' };
-    if (brand.includes('PLN') || cat.includes('pln') || cat.includes('listrik') || (cat.includes('token') && (brand.includes('PLN') || cat.includes('pln') || cat.includes('listrik')))) return { label: 'No. Meter / ID Pelanggan', placeholder: 'Contoh: 1234567890' };
-    if (brand.includes('BPJS') || cat.includes('bpjs')) return { label: 'No. Virtual Akun BPJS', placeholder: 'Contoh: 8888xxxxxxxx' };
-    if (brand.includes('PDAM') || cat.includes('pdam')) return { label: 'No. Pelanggan PDAM', placeholder: 'Masukkan nomor pelanggan' };
-    if (brand.includes('INDIHOME') || cat.includes('internet')) return { label: 'No. Pelanggan IndiHome', placeholder: 'Masukkan nomor pelanggan' };
-    if (['GOPAY','OVO','DANA'].some(b => brand.includes(b))) return { label: 'Nomor HP Terdaftar', placeholder: 'Contoh: 08123456789' };
-    if (['NETFLIX','SPOTIFY'].some(b => brand.includes(b))) return { label: 'Email Akun', placeholder: 'Masukkan email akun' };
-    return { label: 'Nomor HP', placeholder: 'Contoh: 08123456789' };
-  };
-
-  const handlePpobProductSelect = (product) => {
-    ppobRequestIdRef.current++;
-    setPpobSelectedProduct(product);
-    setPpobCustomerId('');
-    setPpobServerId('');
-    setPpobInquiry(null);
-    setPpobSuccessData(null);
-    setPpobProcessing(false);
-    setPpobStep('input');
-  };
-
-  const handlePpobInquiry = async () => {
-    if (!ppobCustomerId.trim()) return;
-    const requestId = ++ppobRequestIdRef.current;
-    setPpobProcessing(true);
-    try {
-      const r = await api('ppob_inquiry', {
-        product_code: ppobSelectedProduct.code,
-        customer_id: ppobCustomerId,
-        category: ppobSelectedProduct.category || '',
-        ...(ppobServerId ? { server_id: ppobServerId } : {}),
-      });
-      if (ppobRequestIdRef.current !== requestId) return;
-      setPpobProcessing(false);
-      if (r.success) {
-        setPpobInquiry(r.data);
-        setPpobStep('confirm');
-      } else {
-        showToast('error', 'Gagal', r.msg || 'ID pelanggan tidak ditemukan atau tidak valid.');
-      }
-    } catch {
-      if (ppobRequestIdRef.current !== requestId) return;
-      setPpobProcessing(false);
-      showToast('error', 'Error', 'Koneksi ke server gagal.');
-    }
-  };
-
-  const handlePpobPayment = async () => {
-    const requestId = ++ppobRequestIdRef.current;
-    setPpobProcessing(true);
-    try {
-      const r = await api('ppob_pay', {
-        product_code: ppobSelectedProduct.code,
-        customer_id: ppobCustomerId,
-        harga: ppobSelectedProduct.price,
-        namaProduk: ppobSelectedProduct.name,
-        category: ppobSelectedProduct.category || '',
-        ...(ppobServerId ? { server_id: ppobServerId } : {}),
-      });
-      if (ppobRequestIdRef.current !== requestId) return;
-      setPpobProcessing(false);
-      if (r.success) {
-        setPpobSuccessData(r.data || {});
-        setPpobStep('success');
-        api('balance').then(res => res.success && setBalance(res.data.balance));
-        fetchHistory();
-      } else {
-        const isInsufficient = r.error_code === 'INSUFFICIENT_BALANCE' || (r.msg && r.msg.toLowerCase().includes('tidak cukup'));
-        if (isInsufficient) {
-          setPpobStep('list');
-          const required = r.required ? Number(r.required) : null;
-          setInsufficientModal({ balance, required, kekurangan: required ? Math.max(0, required - balance) : null });
-        } else {
-          showToast('error', 'Transaksi Gagal', r.msg || 'Transaksi gagal diproses.');
-        }
-      }
-    } catch {
-      if (ppobRequestIdRef.current !== requestId) return;
-      setPpobProcessing(false);
-      showToast('error', 'Error', 'Koneksi ke server gagal.');
-    }
-  };
-
   useEffect(() => {
-    if (tab === 'ppob') {
-      if (ppobItems.length === 0 && !ppobError) fetchPpob();
-    } else {
-      ppobRequestIdRef.current++;
-      setPpobStep('list');
-      setPpobSelectedProduct(null);
-      setPpobCustomerId('');
-      setPpobServerId('');
-      setPpobInquiry(null);
-      setPpobSuccessData(null);
-      setPpobProcessing(false);
-      setPpobActiveCategory('all');
-      setPpobQuery('');
-      setPpobSelectedGame(null);
-      setPpobSelectedPulsaOperator(null);
-      setPpobSelectedEwallet(null);
+    if (tab === 'ppob' && ppobItems.length === 0 && !ppobError) {
+      fetchPpob();
     }
   }, [tab]);
 
@@ -1188,37 +991,57 @@ export default function Page() {
   }, [countries, countryQuery]);
 
   const filteredPpob = useMemo(() => {
-    return ppobItems.filter(p => {
-      let matchSearch = true;
-      if (ppobQuery) {
-        const q = ppobQuery.toLowerCase().trim();
-        const nameLow = (p.name || '').toLowerCase();
-        const brandLow = (p.brand || '').toLowerCase();
-        const catLow = (p.category || '').toLowerCase();
-        // Full match first
-        if (nameLow.includes(q) || brandLow.includes(q) || catLow.includes(q)) {
-          matchSearch = true;
-        } else {
-          // Token match: split by space, "/" or "&" so "XL / AXIS" → ["xl","axis"] matches brand "XL"
-          const tokens = q.split(/[\s/&|,]+/).filter(t => t.length > 1);
-          matchSearch = tokens.some(t => nameLow.includes(t) || brandLow.includes(t) || catLow.includes(t));
-        }
-      }
-      const matchCat = ppobActiveCategory === "all" || getPpobCatId(p) === ppobActiveCategory;
-      return matchSearch && matchCat;
-    });
-  }, [ppobItems, ppobQuery, ppobActiveCategory]);
+    return ppobItems.filter(p => p.name?.toLowerCase().includes(ppobQuery.toLowerCase()) || p.brand?.toLowerCase().includes(ppobQuery.toLowerCase()));
+  }, [ppobItems, ppobQuery]);
 
-  const groupedPpob = useMemo(() => {
+  const ppobCategories = useMemo(() => {
+    const cats = new Set();
+    ppobItems.forEach(p => { if (p.category) cats.add(p.category); });
+    return ['Semua', ...Array.from(cats)];
+  }, [ppobItems]);
+
+  const ppobGrouped = useMemo(() => {
     const groups = {};
-    filteredPpob.forEach(p => {
-      const cat = getPpobCatId(p);
-      const info = PPOB_CATS.find(c => c.id === cat) || { id: cat, label: cat, emoji: "📦" };
-      if (!groups[cat]) groups[cat] = { info, items: [] };
-      groups[cat].items.push(p);
+    const q = ppobQuery.toLowerCase();
+    ppobItems.forEach(p => {
+      if (q && !p.name?.toLowerCase().includes(q) && !p.brand?.toLowerCase().includes(q)) return;
+      if (!groups[p.category]) groups[p.category] = [];
+      groups[p.category].push(p);
     });
-    return Object.values(groups);
-  }, [filteredPpob]);
+    return groups;
+  }, [ppobItems, ppobQuery]);
+
+  const ppobFiltered = useMemo(() => {
+    if (ppobCategory === 'Semua') return null;
+    const q = ppobQuery.toLowerCase();
+    return ppobItems.filter(p => p.category === ppobCategory && (!q || p.name?.toLowerCase().includes(q) || p.brand?.toLowerCase().includes(q)));
+  }, [ppobItems, ppobQuery, ppobCategory]);
+
+  const getCatIcon = (cat) => {
+    const c = (cat || '').toLowerCase();
+    if (c.includes('pulsa') || c.includes('data')) return '📱';
+    if (c.includes('token') || c.includes('listrik') || c.includes('pln')) return '⚡';
+    if (c.includes('bpjs')) return '🏥';
+    if (c.includes('pdam') || c.includes('air')) return '💧';
+    if (c.includes('internet') || c.includes('indihome')) return '🌐';
+    if (c.includes('wallet') || c.includes('gopay') || c.includes('ovo') || c.includes('dana')) return '💳';
+    if (c.includes('game') || c.includes('mobile') || c.includes('pubg') || c.includes('ff')) return '🎮';
+    if (c.includes('stream') || c.includes('netflix') || c.includes('steam')) return '📺';
+    return '🛒';
+  };
+
+  const getCatColor = (cat) => {
+    const c = (cat || '').toLowerCase();
+    if (c.includes('pulsa') || c.includes('data')) return '#4f8cff';
+    if (c.includes('token') || c.includes('listrik') || c.includes('pln')) return '#ffb340';
+    if (c.includes('bpjs')) return '#ff4060';
+    if (c.includes('pdam') || c.includes('air')) return '#00d4ff';
+    if (c.includes('internet') || c.includes('indihome')) return '#a78bfa';
+    if (c.includes('wallet') || c.includes('gopay') || c.includes('ovo') || c.includes('dana')) return '#00e87a';
+    if (c.includes('game') || c.includes('mobile') || c.includes('pubg') || c.includes('ff')) return '#f472b6';
+    if (c.includes('stream') || c.includes('netflix') || c.includes('steam')) return '#fb923c';
+    return '#6ba3ff';
+  };
 
   if (step === 'init') {
     return (
@@ -1890,9 +1713,9 @@ export default function Page() {
                       <img src={s.service_img} alt={s.service_name} className="svc-icon" onError={e => { e.target.style.display = 'none'; }} />
                     </div>
                     <div className="svc-name">{s.service_name}</div>
-                    <div className="svc-price">{s.price ? fmt(s.price) : '...'}</div>
-                    <div className={`svc-stock ${s.stock > 0 ? 'text-green' : s.stock === null ? 'text-muted' : 'text-red'}`}>
-                      {s.stock === null ? '...' : s.stock > 0 ? `${s.stock} total stok` : 'Habis'}
+                    <div className="svc-price">{s.price ? fmt(s.price) : <span style={{ color: 'var(--text-4)' }}>···</span>}</div>
+                    <div className={`svc-stock ${s.stock > 0 ? 'stock-green' : s.stock === null ? 'stock-muted' : 'stock-red'}`}>
+                      {s.stock === null ? '···' : s.stock > 0 ? `${s.stock.toLocaleString()} stok` : 'Habis'}
                     </div>
                   </button>
                 ))}
@@ -1904,7 +1727,7 @@ export default function Page() {
         {tab === 'virtual' && order && (
           <div style={{ animation: 'slideUp 0.4s var(--ease-out) both', paddingBottom: 20 }}>
 
-            
+            {/* ── Virtual SIM Card ── */}
             <div style={{
               background: 'linear-gradient(140deg, #0d1b35 0%, #1a2f5c 55%, #0d1b35 100%)',
               borderRadius: 22,
@@ -1915,15 +1738,15 @@ export default function Page() {
               boxShadow: '0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)',
               border: '1px solid rgba(79,140,255,0.18)',
             }}>
-              
+              {/* Decorative blobs */}
               <div style={{ position: 'absolute', top: -40, right: -40, width: 140, height: 140, background: 'radial-gradient(circle, rgba(79,140,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', bottom: -30, left: -30, width: 100, height: 100, background: 'radial-gradient(circle, rgba(0,232,122,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
-              
+              {/* SIM chip decoration */}
               <div style={{ position: 'absolute', top: 18, right: 20, width: 36, height: 28, borderRadius: 5, background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,215,0,0.08))', border: '1px solid rgba(255,215,0,0.2)', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2, padding: 4 }}>
                 {[...Array(4)].map((_, i) => <div key={i} style={{ background: 'rgba(255,215,0,0.2)', borderRadius: 2 }} />)}
               </div>
 
-              
+              {/* Header: flag + country + service */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
                 <div style={{ position: 'relative' }}>
                   <FlagImg name={order.country} size={36} style={{ borderRadius: 6, boxShadow: '0 3px 10px rgba(0,0,0,0.4)' }} />
@@ -1938,10 +1761,10 @@ export default function Page() {
                 </div>
               </div>
 
-              
+              {/* Phone number label */}
               <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 5 }}>NOMOR VIRTUAL</div>
 
-              
+              {/* Phone number + copy */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
                 <div
                   style={{ fontFamily: 'var(--font-mono)', fontSize: '1.45rem', fontWeight: 900, color: '#fff', letterSpacing: '1.5px', cursor: 'pointer', flex: 1, textShadow: '0 0 20px rgba(79,140,255,0.5)' }}
@@ -1958,7 +1781,7 @@ export default function Page() {
                 </button>
               </div>
 
-              
+              {/* Info pills */}
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Operator</div>
@@ -1975,7 +1798,7 @@ export default function Page() {
               </div>
             </div>
 
-            
+            {/* ── OTP Status Card ── */}
             {order.otp_code && order.otp_code !== '-' && order.otp_code.trim().length > 1 ? (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(0,232,122,0.1) 0%, rgba(0,232,122,0.05) 100%)',
@@ -2041,7 +1864,7 @@ export default function Page() {
               </div>
             )}
 
-            
+            {/* ── Action Buttons ── */}
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 className="btn btn-secondary"
@@ -2072,557 +1895,122 @@ export default function Page() {
 
         {tab === 'ppob' && (
           <div style={{ animation: 'slideUp 0.4s var(--ease-out) both' }}>
+            <div className="section-header-block">
+              <h2>PPOB & Top Up Game</h2>
+              {ppobItems.length > 0 && <span className="count">{ppobItems.length} produk</span>}
+            </div>
 
-            
-            {ppobStep === 'list' && (
+            {ppobError ? (
+              <div className="maintenance-box">
+                <IconWarning />
+                <h3>Sistem Maintenance</h3>
+                <p>{ppobError}<br />Silakan coba lagi nanti.</p>
+                <button className="btn btn-secondary" onClick={fetchPpob}>🔄 Cek Kembali</button>
+              </div>
+            ) : ppobLoading ? (
+              <div className="loading-grid">
+                <LoadingSpinner />
+                <span className="loading-text">Memuat produk...</span>
+              </div>
+            ) : (
               <>
-                <div className="section-header-block">
-                  <h2>PPOB & Top Up</h2>
+                <div className="search-wrap" style={{ marginBottom: 12 }}>
+                  <span className="search-icon">⌕</span>
+                  <input value={ppobQuery} placeholder="Cari produk, brand, layanan..." onChange={e => { setPpobQuery(e.target.value); setPpobCategory('Semua'); }} />
                 </div>
-                {ppobError ? (
-                  <div className="maintenance-box">
-                    <IconWarning />
-                    <h3>Sistem Maintenance</h3>
-                    <p>{ppobError}<br />Silakan coba lagi nanti.</p>
-                    <button className="btn btn-secondary" onClick={fetchPpob}>🔄 Cek Kembali</button>
-                  </div>
-                ) : (
-                  <>
-                    
-                    <div className="search-wrap" style={{ marginBottom: 12 }}>
-                      <span className="search-icon">⌕</span>
-                      <input value={ppobQuery} placeholder="Cari produk, brand, layanan..." onChange={e => { setPpobQuery(e.target.value); setPpobActiveCategory('all'); }} />
-                      {ppobQuery && (
-                        <button onClick={() => setPpobQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '0 10px', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+
+                {/* Category filter chips */}
+                <div className="ppob-cats">
+                  {ppobCategories.map(cat => (
+                    <button
+                      key={cat}
+                      className={`ppob-chip ${ppobCategory === cat ? 'active' : ''}`}
+                      onClick={() => setPpobCategory(cat)}
+                      style={ppobCategory === cat ? { background: getCatColor(cat), borderColor: getCatColor(cat) } : {}}
+                    >
+                      <span>{getCatIcon(cat)}</span>
+                      <span>{cat}</span>
+                      {cat !== 'Semua' && ppobGrouped[cat] && (
+                        <span className="ppob-chip-count">{ppobGrouped[cat].length}</span>
                       )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Semua: grouped sections with horizontal scroll */}
+                {ppobCategory === 'Semua' && Object.keys(ppobGrouped).length === 0 && (
+                  <div className="empty-state">
+                    <span className="icon">🔍</span>
+                    <p>Tidak ada produk ditemukan</p>
+                  </div>
+                )}
+
+                {ppobCategory === 'Semua' && Object.entries(ppobGrouped).map(([cat, items]) => (
+                  <div key={cat} className="ppob-group">
+                    <div className="ppob-group-header">
+                      <div className="ppob-group-title">
+                        <span style={{
+                          width: 32, height: 32, borderRadius: 10, fontSize: '1rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: `${getCatColor(cat)}18`, border: `1px solid ${getCatColor(cat)}30`,
+                        }}>
+                          {getCatIcon(cat)}
+                        </span>
+                        <span>{cat}</span>
+                        <span className="ppob-group-count">{items.length}</span>
+                      </div>
+                      <button className="ppob-group-see-all" onClick={() => setPpobCategory(cat)}>
+                        Lihat Semua →
+                      </button>
                     </div>
+                    <div className="ppob-scroll">
+                      {items.slice(0, 8).map(p => (
+                        <div key={p.code} className="ppob-card">
+                          <div className="ppob-card-accent" style={{ background: getCatColor(p.category) }} />
+                          <div className="ppob-card-icon" style={{ background: `${getCatColor(p.category)}14`, border: `1px solid ${getCatColor(p.category)}25` }}>
+                            <span style={{ fontSize: '1.15rem' }}>{getCatIcon(p.category)}</span>
+                          </div>
+                          <div className="ppob-card-content">
+                            <div className="ppob-card-cat">{p.brand}</div>
+                            <div className="ppob-card-name">{p.name}</div>
+                            <div className="ppob-card-price" style={{ color: getCatColor(p.category) }}>{fmt(p.price)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
 
-                    
-                    {!ppobQuery && (
-                      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'none', marginBottom: 4 }}>
-                        {PPOB_CATS.map(cat => {
-                          const count = cat.id === 'all' ? ppobItems.length : ppobItems.filter(p => getPpobCatId(p) === cat.id).length;
-                          if (count === 0 && cat.id !== 'all') return null;
-                          return (
-                            <button
-                              key={cat.id}
-                              onClick={() => { setPpobActiveCategory(cat.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
-                              style={{
-                                flexShrink: 0,
-                                display: 'flex', alignItems: 'center', gap: 5,
-                                padding: '7px 14px',
-                                borderRadius: 999,
-                                border: ppobActiveCategory === cat.id ? '1.5px solid var(--blue2)' : '1.5px solid rgba(255,255,255,0.1)',
-                                background: ppobActiveCategory === cat.id ? 'rgba(79,140,255,0.15)' : 'rgba(255,255,255,0.04)',
-                                color: ppobActiveCategory === cat.id ? 'var(--blue2)' : 'var(--text-2)',
-                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                transition: 'all 0.18s',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              <span style={{ fontSize: '0.85rem' }}>{cat.emoji}</span>
-                              {cat.label}
-                              {cat.id !== 'all' && <span style={{ fontSize: '0.6rem', opacity: 0.65, fontFamily: 'var(--font-mono)' }}>{count}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    
-                    {ppobLoading && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 8 }}>
-                        {[...Array(6)].map((_, i) => (
-                          <div key={i} style={{ height: 90, borderRadius: 14, background: 'rgba(255,255,255,0.05)', animation: 'pulse 1.5s infinite' }} />
-                        ))}
-                      </div>
-                    )}
-
-                    
-                    {!ppobLoading && filteredPpob.length === 0 && (
+                {/* Single category: grid view */}
+                {ppobCategory !== 'Semua' && (
+                  <>
+                    {(!ppobFiltered || ppobFiltered.length === 0) ? (
                       <div className="empty-state">
                         <span className="icon">🔍</span>
                         <p>Tidak ada produk ditemukan</p>
                       </div>
-                    )}
-
-                    
-                    {!ppobLoading && (ppobQuery || ppobActiveCategory !== 'all' ? (
-                      ppobActiveCategory === 'game' && !ppobSelectedGame ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>Pilih Game:</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-                            {GAME_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
-                              <button
-                                key={g.id}
-                                onClick={() => setPpobSelectedGame(g)}
-                                style={{
-                                  background: `linear-gradient(135deg, ${g.color}22, ${g.color}0a)`,
-                                  border: `1.5px solid ${g.color}55`,
-                                  borderRadius: 18, padding: '20px 14px',
-                                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                  cursor: 'pointer', gap: 8, transition: 'transform 0.15s',
-                                }}
-                                onMouseOver={e => e.currentTarget.style.transform = 'scale(1.03)'}
-                                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                              >
-                                <span style={{ fontSize: '2.2rem' }}>{g.emoji}</span>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text)', textAlign: 'center', lineHeight: 1.3 }}>{g.label}</span>
-                                <span style={{ fontSize: '0.62rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
-                                  {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : ppobActiveCategory === 'game' && ppobSelectedGame ? (
-                        <div style={{ animation: 'slideUp 0.25s ease both' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                            <button
-                              onClick={() => setPpobSelectedGame(null)}
-                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
-                            >← Kembali</button>
-                            <span style={{ fontSize: '1.2rem' }}>{ppobSelectedGame.emoji}</span>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedGame.label}</span>
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-                            {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedGame.brand) && p.name).map((p, i) => (
-                              <button
-                                key={p.code}
-                                onClick={() => handlePpobProductSelect(p)}
-                                style={{
-                                  background: `linear-gradient(160deg, ${ppobSelectedGame.color}18 0%, var(--card) 100%)`,
-                                  border: `1.5px solid ${ppobSelectedGame.color}33`,
-                                  borderRadius: 14, padding: '14px 12px',
-                                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                                  animationDelay: `${(i % 10) * 0.03}s`,
-                                }}
-                                onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedGame.color}
-                                onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedGame.color}33`}
-                              >
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
-                                <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
-                                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedGame.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : ppobActiveCategory === 'ewallet' ? (
-                        ppobSelectedEwallet ? (
-                          <div style={{ animation: 'slideUp 0.25s ease both' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                              <button
-                                onClick={() => setPpobSelectedEwallet(null)}
-                                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
-                              >← Kembali</button>
-                              <span style={{ fontSize: '1.2rem' }}>{ppobSelectedEwallet.emoji}</span>
-                              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedEwallet.label}</span>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-                              {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedEwallet.brand) && p.name).map((p, i) => (
-                                <button
-                                  key={p.code}
-                                  onClick={() => handlePpobProductSelect(p)}
-                                  style={{
-                                    background: `linear-gradient(160deg, ${ppobSelectedEwallet.color}18 0%, var(--card) 100%)`,
-                                    border: `1.5px solid ${ppobSelectedEwallet.color}33`,
-                                    borderRadius: 14, padding: '14px 12px',
-                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                                    animationDelay: `${(i % 10) * 0.03}s`,
-                                  }}
-                                  onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedEwallet.color}
-                                  onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedEwallet.color}33`}
-                                >
-                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
-                                  <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
-                                  <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedEwallet.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-                            {EWALLET_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
-                              <button key={g.id} onClick={() => setPpobSelectedEwallet(g)}
-                                style={{ background: 'linear-gradient(135deg, ' + g.color + '22, ' + g.color + '0a)', border: '1.5px solid ' + g.color + '55', borderRadius: 16, padding: '18px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: 8 }}>
-                                <span style={{ fontSize: '2rem' }}>{g.emoji}</span>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)' }}>{g.label}</span>
-                                <span style={{ fontSize: '0.6rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk</span>
-                              </button>
-                            ))}
-                          </div>
-                        )
-                      ) : ppobActiveCategory === 'pulsa' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {ppobSelectedPulsaOperator ? (
-                            <div style={{ animation: 'slideUp 0.25s ease both' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                                <button
-                                  onClick={() => setPpobSelectedPulsaOperator(null)}
-                                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
-                                >← Kembali</button>
-                                <span style={{ fontSize: '1.2rem' }}>{ppobSelectedPulsaOperator.emoji}</span>
-                                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>{ppobSelectedPulsaOperator.label}</span>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-                                {ppobItems.filter(p => (p.brand||'').toUpperCase().includes(ppobSelectedPulsaOperator.brand) && p.name).map((p, i) => (
-                                  <button
-                                    key={p.code}
-                                    onClick={() => handlePpobProductSelect(p)}
-                                    style={{
-                                      background: `linear-gradient(160deg, ${ppobSelectedPulsaOperator.color}18 0%, var(--card) 100%)`,
-                                      border: `1.5px solid ${ppobSelectedPulsaOperator.color}33`,
-                                      borderRadius: 14, padding: '14px 12px',
-                                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                                      animationDelay: `${(i % 10) * 0.03}s`,
-                                    }}
-                                    onMouseOver={e => e.currentTarget.style.borderColor = ppobSelectedPulsaOperator.color}
-                                    onMouseOut={e => e.currentTarget.style.borderColor = `${ppobSelectedPulsaOperator.color}33`}
-                                  >
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.35 }}>{p.name}</div>
-                                    <div style={{ fontSize: '0.6rem', color: 'var(--text-3)', marginBottom: 10 }}>{p.brand}</div>
-                                    <div style={{ fontSize: '0.92rem', fontWeight: 900, color: ppobSelectedPulsaOperator.color, fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600, marginBottom: 4 }}>Pilih Operator:</div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-                          {PULSA_LIST.filter(g => ppobItems.some(p => (p.brand||'').toUpperCase().includes(g.brand))).map(g => (
-                            <button key={g.id} onClick={() => setPpobSelectedPulsaOperator(g)}
-                              style={{ background: 'linear-gradient(135deg, ' + g.color + '22, ' + g.color + '0a)', border: '1.5px solid ' + g.color + '55', borderRadius: 16, padding: '18px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: 8 }}>
-                              <span style={{ fontSize: '2rem' }}>{g.emoji}</span>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)' }}>{g.label}</span>
-                              <span style={{ fontSize: '0.6rem', color: g.color, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{ppobItems.filter(p => (p.brand||'').toUpperCase().includes(g.brand)).length} produk</span>
-                            </button>
-                          ))}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-                        {filteredPpob.map((p, i) => (
-                          <button key={p.code} onClick={() => handlePpobProductSelect(p)}
-                            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', cursor: 'pointer', textAlign: 'left', transition: 'all 0.18s', borderLeft: '3px solid var(--blue2)' }}
-                            onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--blue2)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(79,140,255,0.12)'; }}
-                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderLeft = '3px solid var(--blue2)'; }}>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5, background: 'rgba(79,140,255,0.1)', padding: '2px 7px', borderRadius: 5 }}>{p.brand}</div>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8, lineHeight: 1.35, flex: 1 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
-                          </button>
-                        ))}
-                      </div>)
                     ) : (
-                      /* Grouped by category */
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                        {groupedPpob.map(group => (
-                          <div key={group.info.id}>
-                            <div style={{
-                              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
-                              paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.07)'
-                            }}>
-                              <span style={{ fontSize: '1.05rem' }}>{group.info.emoji}</span>
-                              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.2px' }}>{group.info.label}</span>
-                              <span style={{ fontSize: '0.62rem', color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginLeft: 2 }}>{group.items.length} produk</span>
-                              <button
-                                onClick={() => { setPpobActiveCategory(group.info.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
-                                style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--blue2)', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                              >
-                                Lihat Semua →
-                              </button>
+                      <div className="ppob-grid">
+                        {ppobFiltered.map(p => (
+                          <div key={p.code} className="ppob-grid-card">
+                            <div className="ppob-card-accent" style={{ background: getCatColor(p.category) }} />
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                              <div className="ppob-card-icon" style={{ background: `${getCatColor(p.category)}14`, border: `1px solid ${getCatColor(p.category)}25`, flexShrink: 0 }}>
+                                <span style={{ fontSize: '1rem' }}>{getCatIcon(p.category)}</span>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="ppob-card-cat">{p.brand}</div>
+                                <div className="ppob-card-name">{p.name}</div>
+                                <div className="ppob-card-price" style={{ color: getCatColor(p.category) }}>{fmt(p.price)}</div>
+                              </div>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 9 }}>
-                              {group.items.slice(0, 4).map((p, i) => (
-                                <button
-                                  key={p.code}
-                                  onClick={() => handlePpobProductSelect(p)}
-                                  style={{
-                                    background: 'var(--card)', border: '1px solid var(--border)',
-                                    borderLeft: `3px solid ${group.info.emoji === '📱' ? '#0057a8' : group.info.emoji === '⚡' ? '#f5a623' : group.info.emoji === '🏥' ? '#00aa5b' : group.info.emoji === '💧' ? '#118eea' : 'var(--blue2)'}`,
-                                    borderRadius: 14, padding: '14px 12px',
-                                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                    cursor: 'pointer', textAlign: 'left',
-                                    transition: 'transform 0.15s, border-color 0.15s, box-shadow 0.15s',
-                                  }}
-                                  onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)'; }}
-                                  onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-                                >
-                                  <div style={{ fontSize: '0.68rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5, background: 'rgba(79,140,255,0.1)', padding: '2px 6px', borderRadius: 5 }}>{p.brand}</div>
-                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text)', marginBottom: 8, lineHeight: 1.35, flex: 1 }}>{p.name}</div>
-                                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(p.price)}</div>
-                                </button>
-                              ))}
-                            </div>
-                            {group.items.length > 4 && (
-                              <button
-                                onClick={() => { setPpobActiveCategory(group.info.id); setPpobSelectedGame(null); setPpobSelectedPulsaOperator(null); setPpobSelectedEwallet(null); }}
-                                style={{
-                                  width: '100%', marginTop: 9, padding: '10px',
-                                  borderRadius: 12, border: '1px dashed rgba(255,255,255,0.12)',
-                                  background: 'rgba(255,255,255,0.02)', color: 'var(--text-3)',
-                                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                  transition: 'all 0.15s',
-                                }}
-                              >
-                                +{group.items.length - 4} produk lainnya
-                              </button>
-                            )}
                           </div>
                         ))}
                       </div>
-                    ))}
+                    )}
                   </>
                 )}
               </>
-            )}
-
-            
-            {ppobStep === 'input' && ppobSelectedProduct && (() => {
-              const inputCfg = getPpobInputConfig(ppobSelectedProduct);
-              return (
-                <div style={{ animation: 'slideUp 0.3s var(--ease-out) both' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                    <button
-                      onClick={() => {
-                        ppobRequestIdRef.current++;
-                        setPpobProcessing(false);
-                        setPpobSelectedProduct(null);
-                        setPpobCustomerId('');
-                        setPpobServerId('');
-                        setPpobInquiry(null);
-                        setPpobStep('list');
-                      }}
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
-                    >
-                      ← Kembali
-                    </button>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>Detail Produk</div>
-                  </div>
-
-                  
-                  <div style={{
-                    background: 'linear-gradient(135deg, rgba(79,140,255,0.12) 0%, rgba(0,212,255,0.06) 100%)',
-                    border: '1px solid rgba(79,140,255,0.25)', borderRadius: 18,
-                    padding: '18px 16px', marginBottom: 20,
-                    display: 'flex', flexDirection: 'column', gap: 8,
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text)', marginBottom: 3, lineHeight: 1.3 }}>{ppobSelectedProduct.name}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', textTransform: 'capitalize' }}>{ppobSelectedProduct.brand} · {ppobSelectedProduct.category}</div>
-                      </div>
-                      <div style={{ background: 'rgba(79,140,255,0.15)', border: '1px solid rgba(79,140,255,0.3)', borderRadius: 10, padding: '6px 12px', textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
-                        <div style={{ fontSize: '0.56rem', color: 'var(--blue2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Harga</div>
-                        <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</div>
-                      </div>
-                    </div>
-                    <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '2px 0' }} />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: balance >= ppobSelectedProduct.price ? 'var(--green)' : 'var(--red)' }} />
-                      <span style={{ fontSize: '0.68rem', color: balance >= ppobSelectedProduct.price ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                        {balance >= ppobSelectedProduct.price ? `Saldo cukup (${fmt(balance)})` : `Saldo kurang — butuh ${fmt(ppobSelectedProduct.price - balance)} lagi`}
-                      </span>
-                    </div>
-                  </div>
-
-                  
-                  <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '18px 16px', marginBottom: 14 }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Masukkan Data Pembeli</div>
-                    <div className="input-field" style={{ marginBottom: inputCfg.needsServer ? 12 : 0 }}>
-                      <label>{inputCfg.label}</label>
-                      <input
-                        type="text"
-                        value={ppobCustomerId}
-                        placeholder={inputCfg.placeholder}
-                        onChange={e => setPpobCustomerId(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && ppobCustomerId.trim() && (!inputCfg.needsServer || ppobServerId.trim()) && handlePpobInquiry()}
-                        autoFocus
-                        style={{ fontSize: '1rem', fontFamily: 'var(--font-mono)' }}
-                      />
-                    </div>
-                    {inputCfg.needsServer && (
-                      <div className="input-field" style={{ marginBottom: 0 }}>
-                        <label>{inputCfg.serverLabel}</label>
-                        <input
-                          type="text"
-                          value={ppobServerId}
-                          placeholder={inputCfg.serverPlaceholder}
-                          onChange={e => setPpobServerId(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && ppobCustomerId.trim() && ppobServerId.trim() && handlePpobInquiry()}
-                          style={{ fontSize: '1rem', fontFamily: 'var(--font-mono)' }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: '100%', height: 52, borderRadius: 'var(--r-full)', fontWeight: 800, fontSize: '0.95rem' }}
-                    onClick={handlePpobInquiry}
-                    disabled={!ppobCustomerId.trim() || (inputCfg.needsServer && !ppobServerId.trim()) || ppobProcessing}
-                  >
-                    {ppobProcessing ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memeriksa...</> : '🔍 Cek & Lanjutkan'}
-                  </button>
-                </div>
-              );
-            })()}
-
-            
-            {ppobStep === 'confirm' && ppobSelectedProduct && (
-              <div style={{ animation: 'slideUp 0.3s var(--ease-out) both' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                  <button
-                    onClick={() => { setPpobProcessing(false); setPpobStep('input'); }}
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', color: 'var(--text-2)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
-                  >
-                    ← Kembali
-                  </button>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>Konfirmasi Pembelian</div>
-                </div>
-
-                
-                <div style={{
-                  background: 'rgba(0,232,122,0.06)', border: '1px solid rgba(0,232,122,0.2)',
-                  borderRadius: 18, padding: '18px 16px', marginBottom: 14
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', flexShrink: 0 }}>
-                      <IconCheck />
-                    </div>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--green)', fontWeight: 800 }}>Data ditemukan</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {ppobInquiry?.customer_name && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Nama</span>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800 }}>{ppobInquiry.customer_name}</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>ID</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{ppobCustomerId}{ppobServerId ? ` (${ppobServerId})` : ''}</span>
-                    </div>
-                    {ppobInquiry?.period && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Periode</span>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800 }}>{ppobInquiry.period}</span>
-                      </div>
-                    )}
-                    {ppobInquiry?.bill_amount && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontWeight: 600 }}>Tagihan</span>
-                        <span style={{ fontSize: '0.82rem', color: 'var(--amber)', fontWeight: 800 }}>{fmt(ppobInquiry.bill_amount)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                
-                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px', marginBottom: 14 }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Ringkasan Pembayaran</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-2)', flex: 1, marginRight: 10 }}>{ppobSelectedProduct.name}</span>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text)', fontWeight: 800, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{fmt(ppobSelectedProduct.price)}</span>
-                    </div>
-                  </div>
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '12px 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text)' }}>Total Bayar</span>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</span>
-                  </div>
-                  <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-3)' }}>Saldo setelah bayar</span>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: balance - ppobSelectedProduct.price >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--font-mono)' }}>{fmt(Math.max(0, balance - ppobSelectedProduct.price))}</span>
-                  </div>
-                </div>
-
-                <button
-                  className="btn btn-primary"
-                  style={{ width: '100%', height: 54, borderRadius: 'var(--r-full)', fontWeight: 800, fontSize: '0.95rem', marginBottom: 10 }}
-                  onClick={handlePpobPayment}
-                  disabled={ppobProcessing || balance < ppobSelectedProduct.price}
-                >
-                  {ppobProcessing ? <><LoadingSpinner style={{ width: 18, height: 18 }} /> Memproses...</> : `✅ Bayar ${fmt(ppobSelectedProduct.price)}`}
-                </button>
-                {balance < ppobSelectedProduct.price && (
-                  <button className="btn btn-secondary" style={{ width: '100%', borderRadius: 'var(--r-full)', height: 44 }} onClick={() => { setPpobStep('list'); setTab('deposit'); }}>
-                    💳 Top Up Saldo Dulu
-                  </button>
-                )}
-              </div>
-            )}
-
-            
-            {ppobStep === 'success' && ppobSelectedProduct && (
-              <div style={{ animation: 'slideUp 0.3s var(--ease-out) both', textAlign: 'center', paddingTop: 24 }}>
-                <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 20px' }}>
-                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,232,122,0.15)', border: '2px solid rgba(0,232,122,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'popIn 0.5s var(--ease-out)' }}>
-                    <svg width="32" height="32" fill="none" stroke="var(--green)" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  </div>
-                  <div style={{ position: 'absolute', inset: -6, borderRadius: '50%', border: '1.5px solid rgba(0,232,122,0.2)', animation: 'pulse 1.5s infinite' }} />
-                </div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--green)', marginBottom: 6 }}>Transaksi Berhasil!</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', marginBottom: 24 }}>Pembayaran telah diproses oleh sistem</div>
-
-                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 18, padding: '18px 16px', marginBottom: 20, textAlign: 'left' }}>
-                  {ppobSuccessData?.ref_id && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Ref. ID</span>
-                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{ppobSuccessData.ref_id}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Produk</span>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700, textAlign: 'right', maxWidth: '65%' }}>{ppobSelectedProduct.name}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>ID Pelanggan</span>
-                    <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{ppobCustomerId}{ppobServerId ? ` (${ppobServerId})` : ''}</span>
-                  </div>
-                  {(ppobSuccessData?.customer_name || ppobInquiry?.customer_name) && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Nama</span>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700 }}>{ppobSuccessData?.customer_name || ppobInquiry?.customer_name}</span>
-                    </div>
-                  )}
-                  {ppobSuccessData?.sn && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Serial Number</span>
-                      <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--cyan)' }}>{ppobSuccessData.sn}</span>
-                    </div>
-                  )}
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '8px 0 12px' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text)' }}>Total Dibayar</span>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--blue2)', fontFamily: 'var(--font-mono)' }}>{fmt(ppobSelectedProduct.price)}</span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ borderRadius: 14, height: 48 }}
-                    onClick={() => { setPpobProcessing(false); setPpobStep('input'); setPpobCustomerId(''); setPpobServerId(''); setPpobInquiry(null); setPpobSuccessData(null); }}
-                  >
-                    🔄 Beli Lagi
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    style={{ borderRadius: 14, height: 48 }}
-                    onClick={() => { ppobRequestIdRef.current++; setPpobProcessing(false); setPpobStep('list'); setPpobSelectedProduct(null); setPpobCustomerId(''); setPpobServerId(''); setPpobInquiry(null); setPpobSuccessData(null); }}
-                  >
-                    🏠 Ke Beranda
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         )}
@@ -2897,10 +2285,10 @@ export default function Page() {
         </button>
       </nav>
 
-      
+      {/* ── Bottom Sheet Overlay ── */}
       <div className={`sheet-overlay ${showSheet ? 'open' : ''}`} onClick={() => setShowSheet(false)} />
 
-      
+      {/* ── Bottom Sheet: Pilih Negara & Server ── */}
       <div className={`bottom-sheet ${showSheet ? 'open' : ''}`}>
         <div className="sheet-handle" />
         <div className="sheet-header">
@@ -2984,7 +2372,7 @@ export default function Page() {
         </div>
       </div>
 
-      
+      {/* ── Operator Selection Modal ── */}
       <div className={`modal-overlay ${showOperatorModal ? 'open' : ''}`}>
         <div className="modal-content popIn" style={{ maxHeight: '75vh', overflowY: 'auto', textAlign: 'left' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 900, marginBottom: 4 }}>
